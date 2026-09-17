@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Photocatalog{% endblock %}
+{% block content %}
+
+<form class="filters" method="get">
+  <input type="text" name="q" placeholder="Cerca nei tag..." value="{{ filters.q }}">
+
+  <select name="camera">
+    <option value="">Tutte le camere</option>
+    {% for c in cameras %}
+      <option value="{{ c }}" {% if c == filters.camera %}selected{% endif %}>{{ c }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="color">
+    <option value="">Tutti i colori</option>
+    {% for c in colors %}
+      <option value="{{ c }}" {% if c == filters.color %}selected{% endif %}>{{ c }}</option>
+    {% endfor %}
+  </select>
+
+  <input type="text" name="from" placeholder="Da (YYYY-MM-DD)" value="{{ filters.from }}">
+  <input type="text" name="to" placeholder="A (YYYY-MM-DD)" value="{{ filters.to }}">
+
+  {% if filters.tag %}
+    <input type="hidden" name="tag" value="{{ filters.tag }}">
+    <span class="active-tag">tag: {{ filters.tag }} <a href="{{ url_for('index') }}">&times;</a></span>
+  {% endif %}
+
+  <button type="submit">Filtra</button>
+  <a class="reset" href="{{ url_for('index') }}">Reset</a>
+</form>
+
+<p class="result-count">{{ total }} immagini</p>
+
+<div class="grid">
+  {% for image in images %}
+    <a class="card" href="{{ url_for('image_detail', image_id=image.id) }}">
+      <img loading="lazy" src="{{ url_for('thumb', image_id=image.id) }}" alt="">
+      <span class="swatch" style="background-color: {{ image.dominant_color_hex or '#ccc' }};"></span>
+    </a>
+  {% else %}
+    <p>Nessuna immagine nel catalogo. Lancia <code>photocatalog scan &lt;cartella&gt;</code>.</p>
+  {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<nav class="pagination">
+  {% if page > 1 %}
+    <a href="{{ url_for('index', page=page-1, **filters) }}">&laquo; Precedente</a>
+  {% endif %}
+  <span>Pagina {{ page }} di {{ total_pages }}</span>
+  {% if page < total_pages %}
+    <a href="{{ url_for('index', page=page+1, **filters) }}">Successiva &raquo;</a>
+  {% endif %}
+</nav>
+{% endif %}
+
+{% endblock %}

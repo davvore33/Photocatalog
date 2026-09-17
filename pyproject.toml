@@ -1,0 +1,25 @@
+[project]
+name = "photocatalog"
+version = "0.1.0"
+description = "Local photo cataloging tool: AI tags, EXIF metadata, and dominant color, browsable via a local web viewer."
+requires-python = ">=3.10"
+dependencies = [
+    "Pillow>=10.0",
+    "requests>=2.31",
+    "piexif>=1.1.3",
+    "Flask>=3.0",
+]
+
+[project.optional-dependencies]
+heic = ["pillow-heif>=0.15"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+photocatalog = "photocatalog.cli:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
