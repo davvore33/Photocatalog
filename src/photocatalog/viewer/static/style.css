@@ -207,6 +207,39 @@ body {
   border-radius: 6px;
 }
 .active-tag a { text-decoration: none; color: var(--muted); margin-left: 0.3rem; }
+
+.active-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: -0.5rem 0 1rem;
+}
+
+.tag-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.tag-filter-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.tag-filter select[multiple] {
+  min-width: 160px;
+}
+.tag-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.tag-mode label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
 .reset { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
 
 .result-count { color: var(--muted); margin: 0.5rem 0; }

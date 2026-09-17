@@ -2,7 +2,7 @@
 {% block title %}{{ image.path.split('/')[-1] }} - Photocatalog{% endblock %}
 {% block content %}
 
-<a class="back" href="{{ url_for('index') }}">{{ t('detail.back') }}</a>
+<a class="back" href="{{ url_for('index') }}{{ '?' + back_qs if back_qs else '' }}">{{ t('detail.back') }}</a>
 
 <div class="detail">
   <div class="detail-image">
@@ -20,7 +20,7 @@
     {% if tags %}
       <div class="tags">
         {% for tag in tags %}
-          <a class="tag" href="{{ url_for('index', tag=tag) }}">{{ tag }}</a>
+          <a class="tag" href="{{ url_for('index', tags=[tag]) }}">{{ tag }}</a>
         {% endfor %}
       </div>
     {% else %}

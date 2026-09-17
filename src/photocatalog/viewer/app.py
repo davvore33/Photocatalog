@@ -67,7 +67,10 @@ def create_app(db_path: Path) -> Flask:
     def index():
         conn = get_conn()
 
-        tag = request.args.get("tag", "").strip()
+        tags_selected = [t for t in request.args.getlist("tags") if t]
+        tag_mode = request.args.get("tag_mode", "and")
+        if tag_mode not in ("and", "or"):
+            tag_mode = "and"
         camera = request.args.get("camera", "").strip()
         color = request.args.get("color", "").strip()
         search = request.args.get("q", "").strip()
@@ -79,16 +82,22 @@ def create_app(db_path: Path) -> Flask:
         clauses = ["1=1"]
         params: list = []
 
-        query_base = "SELECT DISTINCT images.* FROM images"
-        joins = ""
-
-        if tag:
-            joins += (
-                " JOIN image_tags it ON it.image_id = images.id"
-                " JOIN tags t ON t.id = it.tag_id"
-            )
-            clauses.append("t.name = ?")
-            params.append(tag)
+        if tags_selected:
+            placeholders = ", ".join("?" for _ in tags_selected)
+            if tag_mode == "or":
+                clauses.append(
+                    "images.id IN (SELECT it.image_id FROM image_tags it "
+                    f"JOIN tags t ON t.id = it.tag_id WHERE t.name IN ({placeholders}))"
+                )
+                params.extend(tags_selected)
+            else:
+                clauses.append(
+                    "images.id IN (SELECT it.image_id FROM image_tags it "
+                    f"JOIN tags t ON t.id = it.tag_id WHERE t.name IN ({placeholders}) "
+                    "GROUP BY it.image_id HAVING COUNT(DISTINCT t.name) = ?)"
+                )
+                params.extend(tags_selected)
+                params.append(len(tags_selected))
 
         if camera:
             clauses.append("images.exif_camera_model = ?")
@@ -113,13 +122,13 @@ def create_app(db_path: Path) -> Flask:
             params.append(date_to)
 
         where = " AND ".join(clauses)
-        count_sql = f"SELECT COUNT(DISTINCT images.id) AS n FROM images {joins} WHERE {where}"
+        count_sql = f"SELECT COUNT(*) AS n FROM images WHERE {where}"
         total = conn.execute(count_sql, params).fetchone()["n"]
 
         offset = (page - 1) * page_size
         list_sql = (
-            f"{query_base} {joins} WHERE {where} "
-            "ORDER BY images.exif_datetime_original DESC, images.added_at DESC "
+            f"SELECT * FROM images WHERE {where} "
+            "ORDER BY exif_datetime_original DESC, added_at DESC "
             "LIMIT ? OFFSET ?"
         )
         rows = conn.execute(list_sql, [*params, page_size, offset]).fetchall()
@@ -138,6 +147,7 @@ def create_app(db_path: Path) -> Flask:
                 "WHERE dominant_color_name IS NOT NULL ORDER BY 1"
             )
         ]
+        all_tags = [r["name"] for r in conn.execute("SELECT name FROM tags ORDER BY name")]
 
         total_pages = max(1, (total + page_size - 1) // page_size)
 
@@ -148,7 +158,8 @@ def create_app(db_path: Path) -> Flask:
             page=page,
             total_pages=total_pages,
             filters={
-                "tag": tag,
+                "tags": tags_selected,
+                "tag_mode": tag_mode,
                 "camera": camera,
                 "color": color,
                 "q": search,
@@ -157,6 +168,8 @@ def create_app(db_path: Path) -> Flask:
             },
             cameras=cameras,
             colors=colors,
+            all_tags=all_tags,
+            back_qs=request.query_string.decode(),
         )
 
     @app.route("/image/<int:image_id>")
@@ -169,7 +182,12 @@ def create_app(db_path: Path) -> Flask:
         exif = json.loads(row["exif_json"]) if row["exif_json"] else {}
         palette = json.loads(row["palette_json"]) if row["palette_json"] else []
         return render_template(
-            "detail.html", image=row, tags=tags, exif=exif, palette=palette
+            "detail.html",
+            image=row,
+            tags=tags,
+            exif=exif,
+            palette=palette,
+            back_qs=request.args.get("back", ""),
         )
 
     @app.route("/thumb/<int:image_id>.jpg")

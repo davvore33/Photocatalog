@@ -22,20 +22,40 @@
   <input type="text" name="from" placeholder="{{ t('index.date_from') }}" value="{{ filters.from }}">
   <input type="text" name="to" placeholder="{{ t('index.date_to') }}" value="{{ filters.to }}">
 
-  {% if filters.tag %}
-    <input type="hidden" name="tag" value="{{ filters.tag }}">
-    <span class="active-tag">{{ t('index.tag_prefix') }}: {{ filters.tag }} <a href="{{ url_for('index') }}">&times;</a></span>
-  {% endif %}
+  <div class="tag-filter">
+    <span class="tag-filter-label">{{ t('index.tags_label') }}</span>
+    <select name="tags" multiple size="4" title="{{ t('index.tags_hint') }}">
+      {% for name in all_tags %}
+        <option value="{{ name }}" {% if name in filters.tags %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+    <div class="tag-mode">
+      <label><input type="radio" name="tag_mode" value="and" {% if filters.tag_mode == 'and' %}checked{% endif %}> {{ t('index.tag_mode_and') }}</label>
+      <label><input type="radio" name="tag_mode" value="or" {% if filters.tag_mode == 'or' %}checked{% endif %}> {{ t('index.tag_mode_or') }}</label>
+    </div>
+  </div>
 
   <button type="submit">{{ t('index.filter_button') }}</button>
   <a class="reset" href="{{ url_for('index') }}">{{ t('index.reset') }}</a>
 </form>
 
+{% if filters.tags %}
+  <div class="active-tags">
+    {% for tag in filters.tags %}
+      {% set remaining = filters.tags | reject('equalto', tag) | list %}
+      <span class="active-tag">
+        {{ tag }}
+        <a href="{{ url_for('index', **dict(filters, tags=remaining)) }}">&times;</a>
+      </span>
+    {% endfor %}
+  </div>
+{% endif %}
+
 <p class="result-count">{{ t('index.result_count', n=total) }}</p>
 
 <div class="grid">
   {% for image in images %}
-    <a class="card" href="{{ url_for('image_detail', image_id=image.id) }}">
+    <a class="card" href="{{ url_for('image_detail', image_id=image.id, back=back_qs) }}">
       <img loading="lazy" src="{{ url_for('thumb', image_id=image.id) }}" alt="">
       <span class="swatch" style="background-color: {{ image.dominant_color_hex or '#ccc' }};"></span>
     </a>
