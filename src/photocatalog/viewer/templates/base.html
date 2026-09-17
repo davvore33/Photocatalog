@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="it">
+<html lang="{{ current_lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,8 +9,73 @@
 <body>
   <header class="site-header">
     <a class="logo" href="{{ url_for('index') }}">📷 Photocatalog</a>
-    <a class="nav-link" href="{{ url_for('scan_page') }}">+ Scansiona</a>
+    <a class="nav-link" href="{{ url_for('scan_page') }}">{{ t('nav.scan') }}</a>
+    <div class="header-right">
+      <a class="scan-status-badge" id="global-scan-badge" href="{{ url_for('scan_page') }}" hidden>
+        <span class="dot"></span><span id="global-scan-text"></span>
+      </a>
+      <div class="lang-toggle">
+        <a href="{{ url_for('set_lang', code='it', next=request.full_path) }}" class="{{ 'active' if current_lang == 'it' }}">IT</a>
+        <a href="{{ url_for('set_lang', code='en', next=request.full_path) }}" class="{{ 'active' if current_lang == 'en' }}">EN</a>
+      </div>
+    </div>
   </header>
+
+  <script>
+    const T = {
+      folder_label: {{ t('scan.folder_label') | tojson }},
+      files_seen: {{ t('scan.files_seen') | tojson }},
+      go_to_catalog: {{ t('scan.go_to_catalog') | tojson }},
+      phase_scanning: {{ t('scan.phase_scanning') | tojson }},
+      phase_tagging_prefix: {{ t('scan.phase_tagging_prefix') | tojson }},
+      phase_stopping: {{ t('scan.phase_stopping') | tojson }},
+      phase_done: {{ t('scan.phase_done') | tojson }},
+      phase_cancelled: {{ t('scan.phase_cancelled') | tojson }},
+      phase_error: {{ t('scan.phase_error') | tojson }},
+      count_added: {{ t('scan.counts_added') | tojson }},
+      count_updated: {{ t('scan.counts_updated') | tojson }},
+      count_unchanged: {{ t('scan.counts_unchanged') | tojson }},
+      count_moved: {{ t('scan.counts_moved') | tojson }},
+      count_tagged: {{ t('scan.counts_tagged') | tojson }},
+      count_tag_errors: {{ t('scan.counts_tag_errors') | tojson }},
+      confirm_risky: {{ t('scan.confirm_risky') | tojson }},
+      catalog_url: {{ url_for('index') | tojson }},
+      scan_status_url: {{ url_for('scan_status') | tojson }},
+    };
+
+    function phaseLabel(status) {
+      if (status.phase === 'tagging') {
+        return T.phase_tagging_prefix + ' ' + (status.model || '');
+      }
+      return {
+        scanning: T.phase_scanning,
+        stopping: T.phase_stopping,
+        done: T.phase_done,
+        cancelled: T.phase_cancelled,
+        error: T.phase_error,
+      }[status.phase] || status.phase;
+    }
+
+    async function pollGlobalScanStatus() {
+      try {
+        const res = await fetch(T.scan_status_url);
+        const data = await res.json();
+        const badge = document.getElementById('global-scan-badge');
+        const text = document.getElementById('global-scan-text');
+        if (data.status === 'running') {
+          badge.hidden = false;
+          text.textContent = phaseLabel(data);
+        } else {
+          badge.hidden = true;
+        }
+      } catch (e) {
+        // network hiccup, ignore and retry on next tick
+      }
+    }
+    pollGlobalScanStatus();
+    setInterval(pollGlobalScanStatus, 3000);
+  </script>
+
   <main>
     {% block content %}{% endblock %}
   </main>

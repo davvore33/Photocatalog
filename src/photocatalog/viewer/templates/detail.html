@@ -2,7 +2,7 @@
 {% block title %}{{ image.path.split('/')[-1] }} - Photocatalog{% endblock %}
 {% block content %}
 
-<a class="back" href="{{ url_for('index') }}">&laquo; Torna al catalogo</a>
+<a class="back" href="{{ url_for('index') }}">{{ t('detail.back') }}</a>
 
 <div class="detail">
   <div class="detail-image">
@@ -16,7 +16,7 @@
     <p class="path">{{ image.path }}</p>
     <p>{{ image.width }} &times; {{ image.height }} &middot; {{ image.format }} &middot; {{ (image.file_size / 1024) | round(1) }} KB</p>
 
-    <h2>Tag</h2>
+    <h2>{{ t('detail.tags_heading') }}</h2>
     {% if tags %}
       <div class="tags">
         {% for tag in tags %}
@@ -25,13 +25,13 @@
       </div>
     {% else %}
       <p class="muted">
-        {% if image.tags_status == 'pending' %}In attesa di analisi.
-        {% elif image.tags_status == 'error' %}Errore: {{ image.error_message }}
-        {% else %}Nessun tag.{% endif %}
+        {% if image.tags_status == 'pending' %}{{ t('detail.pending') }}
+        {% elif image.tags_status == 'error' %}{{ t('detail.error_prefix', msg=image.error_message) }}
+        {% else %}{{ t('detail.no_tags') }}{% endif %}
       </p>
     {% endif %}
 
-    <h2>Colore dominante</h2>
+    <h2>{{ t('detail.dominant_color_heading') }}</h2>
     <div class="palette">
       {% for p in palette %}
         <span class="swatch-large" style="background-color: {{ p.hex }};" title="{{ p.hex }} ({{ (p.fraction * 100) | round(1) }}%)"></span>
@@ -39,7 +39,7 @@
     </div>
     <p>{{ image.dominant_color_name }} ({{ image.dominant_color_hex }})</p>
 
-    <h2>EXIF</h2>
+    <h2>{{ t('detail.exif_heading') }}</h2>
     {% if exif %}
       {% for ifd_name, fields in exif.items() %}
         <h3>{{ ifd_name }}</h3>
@@ -50,7 +50,7 @@
         </table>
       {% endfor %}
     {% else %}
-      <p class="muted">Nessun dato EXIF.</p>
+      <p class="muted">{{ t('detail.no_exif') }}</p>
     {% endif %}
   </div>
 </div>

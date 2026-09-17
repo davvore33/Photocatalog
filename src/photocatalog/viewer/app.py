@@ -5,29 +5,31 @@ from pathlib import Path
 from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from .. import config, db, thumbnails
-from . import jobs
+from . import i18n, jobs
 
 
 def _list_subdirs(path: Path) -> tuple[list[Path], str | None]:
+    """Returns (entries, error). error is None, 'permission', or a raw OSError message."""
     try:
         entries = [p for p in path.iterdir() if p.is_dir() and not p.name.startswith(".")]
     except PermissionError:
-        return [], "Permesso negato per questa cartella."
+        return [], "permission"
     except OSError as exc:
-        return [], f"Impossibile leggere questa cartella: {exc}"
+        return [], str(exc)
     return sorted(entries, key=lambda p: p.name.lower()), None
 
 
 def _shortcuts() -> list[tuple[str, Path]]:
+    """Returns (i18n key suffix, path) pairs for folders that exist."""
     home = Path.home()
     candidates = [
-        ("Home", home),
-        ("Scrivania", home / "Desktop"),
-        ("Immagini", home / "Pictures"),
-        ("Documenti", home / "Documents"),
-        ("Volumi esterni", Path("/Volumes")),
+        ("home", home),
+        ("desktop", home / "Desktop"),
+        ("pictures", home / "Pictures"),
+        ("documents", home / "Documents"),
+        ("volumes", Path("/Volumes")),
     ]
-    return [(label, p) for label, p in candidates if p.is_dir()]
+    return [(key, p) for key, p in candidates if p.is_dir()]
 
 
 def create_app(db_path: Path) -> Flask:
@@ -44,6 +46,22 @@ def create_app(db_path: Path) -> Flask:
         conn = g.pop("conn", None)
         if conn is not None:
             conn.close()
+
+    def current_lang() -> str:
+        lang = request.cookies.get("lang", i18n.DEFAULT_LANG)
+        return lang if lang in i18n.TRANSLATIONS else i18n.DEFAULT_LANG
+
+    @app.context_processor
+    def inject_i18n():
+        lang = current_lang()
+        return {"t": lambda key, **kw: i18n.translate(lang, key, **kw), "current_lang": lang}
+
+    @app.route("/lang/<code>")
+    def set_lang(code: str):
+        resp = redirect(request.args.get("next") or url_for("index"))
+        if code in i18n.TRANSLATIONS:
+            resp.set_cookie("lang", code, max_age=60 * 60 * 24 * 365)
+        return resp
 
     @app.route("/")
     def index():

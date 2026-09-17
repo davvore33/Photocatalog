@@ -54,6 +54,14 @@ scripts/build_macos_app.sh "$HOME/Applications"   # oppure qualsiasi destinazion
 
 L'app avvia `photocatalog serve` sul catalogo di default se non è già in esecuzione, poi apre `http://127.0.0.1:5000` nel browser predefinito. Non ha una finestra propria (`LSUIElement`), quindi si avvia e si toglie di mezzo.
 
+### Stato dello scan sempre visibile
+
+Quando uno scan è in corso (avviato dal browser), in alto a destra su **ogni** pagina — non solo su `/scan` — compare un piccolo badge con la fase corrente (scansione/tagging/fermando) e la cartella. Cliccandolo si va direttamente a `/scan`, dove ci sono il pannello di progresso e il pulsante per fermarlo. Uno scan avviato da CLI non è tracciato da questo badge (è un processo separato dal server web), solo gli scan avviati dal browser lo sono.
+
+### Lingua
+
+Nell'header c'è un selettore **IT / EN** — imposta un cookie e ridisegna subito tutta l'interfaccia (nav, filtri, etichette, messaggi d'errore, progresso scan) nella lingua scelta. Le traduzioni vivono in `src/photocatalog/viewer/i18n.py`.
+
 ## Sviluppo
 
 ```bash

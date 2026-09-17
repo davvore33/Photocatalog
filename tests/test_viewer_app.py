@@ -21,7 +21,7 @@ def test_list_subdirs_reports_permission_error(tmp_path: Path):
         entries, error = _list_subdirs(tmp_path)
 
     assert entries == []
-    assert error == "Permesso negato per questa cartella."
+    assert error == "permission"
 
 
 def test_list_subdirs_reports_other_os_errors(tmp_path: Path):

@@ -3,35 +3,35 @@
 {% block content %}
 
 <form class="filters" method="get">
-  <input type="text" name="q" placeholder="Cerca nei tag..." value="{{ filters.q }}">
+  <input type="text" name="q" placeholder="{{ t('index.search_placeholder') }}" value="{{ filters.q }}">
 
   <select name="camera">
-    <option value="">Tutte le camere</option>
+    <option value="">{{ t('index.all_cameras') }}</option>
     {% for c in cameras %}
       <option value="{{ c }}" {% if c == filters.camera %}selected{% endif %}>{{ c }}</option>
     {% endfor %}
   </select>
 
   <select name="color">
-    <option value="">Tutti i colori</option>
+    <option value="">{{ t('index.all_colors') }}</option>
     {% for c in colors %}
       <option value="{{ c }}" {% if c == filters.color %}selected{% endif %}>{{ c }}</option>
     {% endfor %}
   </select>
 
-  <input type="text" name="from" placeholder="Da (YYYY-MM-DD)" value="{{ filters.from }}">
-  <input type="text" name="to" placeholder="A (YYYY-MM-DD)" value="{{ filters.to }}">
+  <input type="text" name="from" placeholder="{{ t('index.date_from') }}" value="{{ filters.from }}">
+  <input type="text" name="to" placeholder="{{ t('index.date_to') }}" value="{{ filters.to }}">
 
   {% if filters.tag %}
     <input type="hidden" name="tag" value="{{ filters.tag }}">
-    <span class="active-tag">tag: {{ filters.tag }} <a href="{{ url_for('index') }}">&times;</a></span>
+    <span class="active-tag">{{ t('index.tag_prefix') }}: {{ filters.tag }} <a href="{{ url_for('index') }}">&times;</a></span>
   {% endif %}
 
-  <button type="submit">Filtra</button>
-  <a class="reset" href="{{ url_for('index') }}">Reset</a>
+  <button type="submit">{{ t('index.filter_button') }}</button>
+  <a class="reset" href="{{ url_for('index') }}">{{ t('index.reset') }}</a>
 </form>
 
-<p class="result-count">{{ total }} immagini</p>
+<p class="result-count">{{ t('index.result_count', n=total) }}</p>
 
 <div class="grid">
   {% for image in images %}
@@ -40,18 +40,18 @@
       <span class="swatch" style="background-color: {{ image.dominant_color_hex or '#ccc' }};"></span>
     </a>
   {% else %}
-    <p>Nessuna immagine nel catalogo. Lancia <code>photocatalog scan &lt;cartella&gt;</code>.</p>
+    <p>{{ t('index.empty_catalog') | safe }}</p>
   {% endfor %}
 </div>
 
 {% if total_pages > 1 %}
 <nav class="pagination">
   {% if page > 1 %}
-    <a href="{{ url_for('index', page=page-1, **filters) }}">&laquo; Precedente</a>
+    <a href="{{ url_for('index', page=page-1, **filters) }}">{{ t('index.prev') }}</a>
   {% endif %}
-  <span>Pagina {{ page }} di {{ total_pages }}</span>
+  <span>{{ t('index.page_of', page=page, total=total_pages) }}</span>
   {% if page < total_pages %}
-    <a href="{{ url_for('index', page=page+1, **filters) }}">Successiva &raquo;</a>
+    <a href="{{ url_for('index', page=page+1, **filters) }}">{{ t('index.next') }}</a>
   {% endif %}
 </nav>
 {% endif %}
