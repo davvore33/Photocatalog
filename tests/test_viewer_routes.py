@@ -1,3 +1,5 @@
+import csv
+import io
 from pathlib import Path
 
 import pytest
@@ -84,3 +86,40 @@ def test_detail_back_link_plain_when_no_filters(client):
     resp = client.get(f"/image/{image_id}")
     html = resp.get_data(as_text=True)
     assert 'href="/"' in html
+
+
+def _read_csv_rows(resp) -> list[dict]:
+    text = resp.get_data(as_text=True).lstrip("﻿")
+    return list(csv.DictReader(io.StringIO(text)))
+
+
+def test_export_csv_headers_and_content_type(client):
+    resp = client.get("/export.csv")
+    assert resp.status_code == 200
+    assert resp.mimetype == "text/csv"
+    assert "attachment" in resp.headers["Content-Disposition"]
+    assert "photocatalog-export.csv" in resp.headers["Content-Disposition"]
+
+
+def test_export_csv_contains_all_images_when_unfiltered(client):
+    resp = client.get("/export.csv")
+    rows = _read_csv_rows(resp)
+    assert len(rows) == len(client.image_ids)
+    paths = {row["path"] for row in rows}
+    assert paths == {"/photos/a.jpg", "/photos/b.jpg", "/photos/c.jpg", "/photos/d.jpg"}
+
+
+def test_export_csv_respects_tag_filter(client):
+    resp = client.get("/export.csv?tags=beach&tags=sunset&tag_mode=and")
+    rows = _read_csv_rows(resp)
+    assert len(rows) == 1
+    assert rows[0]["path"] == "/photos/a.jpg"
+    assert "beach" in rows[0]["tags"]
+    assert "sunset" in rows[0]["tags"]
+
+
+def test_export_csv_is_not_paginated(client):
+    resp = client.get("/export.csv?tags=beach&tags=sunset&tag_mode=or")
+    rows = _read_csv_rows(resp)
+    # beach_sunset, beach_only, sunset_only all match OR - more than one page_size would allow
+    assert len(rows) == 3

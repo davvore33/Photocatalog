@@ -1,11 +1,100 @@
+import csv
+import io
 import json
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from .. import config, db, thumbnails
 from . import i18n, jobs
+
+EXPORT_COLUMNS = [
+    "filename",
+    "path",
+    "width",
+    "height",
+    "format",
+    "file_size_bytes",
+    "camera_make",
+    "camera_model",
+    "lens_model",
+    "datetime_original",
+    "gps_lat",
+    "gps_lon",
+    "dominant_color_name",
+    "dominant_color_hex",
+    "tags",
+    "tags_status",
+    "added_at",
+    "exif_json",
+]
+
+
+def _parse_filters(args) -> tuple[str, list, dict]:
+    """Build a SQL WHERE clause + params from query args, shared by the grid and CSV export."""
+    tags_selected = [t for t in args.getlist("tags") if t]
+    tag_mode = args.get("tag_mode", "and")
+    if tag_mode not in ("and", "or"):
+        tag_mode = "and"
+    camera = args.get("camera", "").strip()
+    color = args.get("color", "").strip()
+    search = args.get("q", "").strip()
+    date_from = args.get("from", "").strip()
+    date_to = args.get("to", "").strip()
+
+    clauses = ["1=1"]
+    params: list = []
+
+    if tags_selected:
+        placeholders = ", ".join("?" for _ in tags_selected)
+        if tag_mode == "or":
+            clauses.append(
+                "images.id IN (SELECT it.image_id FROM image_tags it "
+                f"JOIN tags t ON t.id = it.tag_id WHERE t.name IN ({placeholders}))"
+            )
+            params.extend(tags_selected)
+        else:
+            clauses.append(
+                "images.id IN (SELECT it.image_id FROM image_tags it "
+                f"JOIN tags t ON t.id = it.tag_id WHERE t.name IN ({placeholders}) "
+                "GROUP BY it.image_id HAVING COUNT(DISTINCT t.name) = ?)"
+            )
+            params.extend(tags_selected)
+            params.append(len(tags_selected))
+
+    if camera:
+        clauses.append("images.exif_camera_model = ?")
+        params.append(camera)
+
+    if color:
+        clauses.append("images.dominant_color_name = ?")
+        params.append(color)
+
+    if search:
+        clauses.append(
+            "images.id IN (SELECT it3.image_id FROM image_tags it3 "
+            "JOIN tags t3 ON t3.id = it3.tag_id WHERE t3.name LIKE ?)"
+        )
+        params.append(f"%{search}%")
+
+    if date_from:
+        clauses.append("images.exif_datetime_original >= ?")
+        params.append(date_from)
+    if date_to:
+        clauses.append("images.exif_datetime_original <= ?")
+        params.append(date_to)
+
+    filters = {
+        "tags": tags_selected,
+        "tag_mode": tag_mode,
+        "camera": camera,
+        "color": color,
+        "q": search,
+        "from": date_from,
+        "to": date_to,
+    }
+    return " AND ".join(clauses), params, filters
 
 
 def _list_subdirs(path: Path) -> tuple[list[Path], str | None]:
@@ -67,61 +156,10 @@ def create_app(db_path: Path) -> Flask:
     def index():
         conn = get_conn()
 
-        tags_selected = [t for t in request.args.getlist("tags") if t]
-        tag_mode = request.args.get("tag_mode", "and")
-        if tag_mode not in ("and", "or"):
-            tag_mode = "and"
-        camera = request.args.get("camera", "").strip()
-        color = request.args.get("color", "").strip()
-        search = request.args.get("q", "").strip()
-        date_from = request.args.get("from", "").strip()
-        date_to = request.args.get("to", "").strip()
+        where, params, filters = _parse_filters(request.args)
         page = max(1, request.args.get("page", 1, type=int))
         page_size = config.DEFAULT_PAGE_SIZE
 
-        clauses = ["1=1"]
-        params: list = []
-
-        if tags_selected:
-            placeholders = ", ".join("?" for _ in tags_selected)
-            if tag_mode == "or":
-                clauses.append(
-                    "images.id IN (SELECT it.image_id FROM image_tags it "
-                    f"JOIN tags t ON t.id = it.tag_id WHERE t.name IN ({placeholders}))"
-                )
-                params.extend(tags_selected)
-            else:
-                clauses.append(
-                    "images.id IN (SELECT it.image_id FROM image_tags it "
-                    f"JOIN tags t ON t.id = it.tag_id WHERE t.name IN ({placeholders}) "
-                    "GROUP BY it.image_id HAVING COUNT(DISTINCT t.name) = ?)"
-                )
-                params.extend(tags_selected)
-                params.append(len(tags_selected))
-
-        if camera:
-            clauses.append("images.exif_camera_model = ?")
-            params.append(camera)
-
-        if color:
-            clauses.append("images.dominant_color_name = ?")
-            params.append(color)
-
-        if search:
-            clauses.append(
-                "images.id IN (SELECT it3.image_id FROM image_tags it3 "
-                "JOIN tags t3 ON t3.id = it3.tag_id WHERE t3.name LIKE ?)"
-            )
-            params.append(f"%{search}%")
-
-        if date_from:
-            clauses.append("images.exif_datetime_original >= ?")
-            params.append(date_from)
-        if date_to:
-            clauses.append("images.exif_datetime_original <= ?")
-            params.append(date_to)
-
-        where = " AND ".join(clauses)
         count_sql = f"SELECT COUNT(*) AS n FROM images WHERE {where}"
         total = conn.execute(count_sql, params).fetchone()["n"]
 
@@ -157,19 +195,55 @@ def create_app(db_path: Path) -> Flask:
             total=total,
             page=page,
             total_pages=total_pages,
-            filters={
-                "tags": tags_selected,
-                "tag_mode": tag_mode,
-                "camera": camera,
-                "color": color,
-                "q": search,
-                "from": date_from,
-                "to": date_to,
-            },
+            filters=filters,
             cameras=cameras,
             colors=colors,
             all_tags=all_tags,
             back_qs=request.query_string.decode(),
+        )
+
+    @app.route("/export.csv")
+    def export_csv():
+        conn = get_conn()
+        where, params, _filters = _parse_filters(request.args)
+        list_sql = (
+            f"SELECT * FROM images WHERE {where} "
+            "ORDER BY exif_datetime_original DESC, added_at DESC"
+        )
+        rows = conn.execute(list_sql, params).fetchall()
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(EXPORT_COLUMNS)
+        for row in rows:
+            tags = db.get_tags_for_image(conn, row["id"])
+            writer.writerow(
+                [
+                    Path(row["path"]).name,
+                    row["path"],
+                    row["width"],
+                    row["height"],
+                    row["format"],
+                    row["file_size"],
+                    row["exif_camera_make"],
+                    row["exif_camera_model"],
+                    row["exif_lens_model"],
+                    row["exif_datetime_original"],
+                    row["exif_gps_lat"],
+                    row["exif_gps_lon"],
+                    row["dominant_color_name"],
+                    row["dominant_color_hex"],
+                    "; ".join(tags),
+                    row["tags_status"],
+                    row["added_at"],
+                    row["exif_json"] or "",
+                ]
+            )
+
+        return Response(
+            buffer.getvalue().encode("utf-8-sig"),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=photocatalog-export.csv"},
         )
 
     @app.route("/image/<int:image_id>")

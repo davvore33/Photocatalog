@@ -62,6 +62,12 @@ Quando uno scan è in corso (avviato dal browser), in alto a destra su **ogni** 
 
 Nell'header c'è un selettore **IT / EN** — imposta un cookie e ridisegna subito tutta l'interfaccia (nav, filtri, etichette, messaggi d'errore, progresso scan) nella lingua scelta. Le traduzioni vivono in `src/photocatalog/viewer/i18n.py`.
 
+### Filtro multi-tag ed export CSV
+
+Il filtro tag è un multi-select (⌘/Ctrl+click per selezionarne più di uno) con toggle **AND / OR**: AND richiede tutti i tag selezionati sull'immagine, OR ne richiede almeno uno. I tag attivi compaiono anche come pillole rimuovibili. Aprire una foto e cliccare "Torna al catalogo" ora riporta esattamente alla vista filtrata/paginata di prima, invece di azzerarla.
+
+Il pulsante **⬇ Esporta CSV** scarica tutte le immagini che corrispondono ai *filtri correnti* (non solo la pagina visibile) in un CSV: nome file, percorso, dimensioni, formato, peso, camera/obiettivo/data/GPS dall'EXIF, colore dominante, tag, e l'EXIF grezzo completo in JSON.
+
 ## Sviluppo
 
 ```bash

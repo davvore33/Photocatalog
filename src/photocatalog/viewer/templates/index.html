@@ -37,6 +37,7 @@
 
   <button type="submit">{{ t('index.filter_button') }}</button>
   <a class="reset" href="{{ url_for('index') }}">{{ t('index.reset') }}</a>
+  <a class="export-btn" href="{{ url_for('export_csv', **filters) }}">{{ t('index.export_button') }}</a>
 </form>
 
 {% if filters.tags %}

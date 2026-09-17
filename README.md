@@ -62,6 +62,12 @@ Whenever a scan is running (started from the browser), a small badge appears at 
 
 The header has an **IT / EN** switch — it sets a cookie and immediately re-renders the whole interface (nav, filters, labels, error messages, scan progress) in the chosen language. Translations live in `src/photocatalog/viewer/i18n.py`.
 
+### Multi-tag filtering and CSV export
+
+The tag filter is a multi-select (⌘/Ctrl-click to pick several) with an **AND / OR** toggle: AND requires every selected tag on the image, OR requires at least one. Selected tags also show as removable pills. Opening a photo and clicking "Back to catalog" now returns to that exact filtered/paginated view instead of resetting it.
+
+The **⬇ Export CSV** button downloads every image matching the *current filters* (not just the visible page) as a CSV: filename, path, dimensions, format, size, camera/lens/date/GPS from EXIF, dominant color, tags, and the full raw EXIF JSON.
+
 ## Development
 
 ```bash
