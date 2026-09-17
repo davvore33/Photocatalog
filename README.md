@@ -39,6 +39,21 @@ photocatalog prune                         # remove entries for files that no lo
 
 The catalog (`~/.photocatalog/catalog.db`) and thumbnails (`~/.photocatalog/thumbnails/`) live outside the repository. Scanning is incremental and resumable: re-running `scan` on the same folder skips unchanged files and resumes tagging where it left off.
 
+### Scanning from the browser
+
+The viewer has a **"+ Scansiona"** page (`/scan`) with a folder browser (shortcuts for Home/Desktop/Pictures/Documents/`/Volumes`, plus a path field) to pick a folder and start a scan without touching the terminal. The scan runs in a background thread on the server and the page polls live progress (files seen, tagged, errors) until it's done — no need to keep the tab open, `photocatalog stats` or a refresh of `/scan` will show the same status. Only one scan runs at a time, and a **"Ferma lo scan in corso"** button appears while it's running to cancel it (it stops at the next file boundary, so it can take up to ~30s if it's mid-tag). Starting a scan on a very shallow path (like `/` or `/Users`) asks for confirmation first, since that could mean walking the entire disk.
+
+### macOS launcher app
+
+To start the viewer with a double-click instead of the terminal:
+
+```bash
+scripts/build_macos_app.sh                 # installs Photocatalog.app to /Applications
+scripts/build_macos_app.sh "$HOME/Applications"   # or any writable destination
+```
+
+The app starts `photocatalog serve` on the default catalog if it isn't already running, then opens `http://127.0.0.1:5000` in your default browser. It has no window of its own (`LSUIElement`), so it just launches and gets out of the way.
+
 ## Development
 
 ```bash
@@ -51,7 +66,7 @@ pytest
 - Only the embedded preview is used for RAW files, not the actual sensor data — tags, dominant color, and the thumbnail reflect the camera-generated JPEG preview, not a full RAW development.
 - Other RAW formats beyond ARW/CR2/CR3/NEF/RAF may still work if LibRaw supports them, but are untested.
 - HEIC photos require the `pillow-heif` extra.
-- Ollama tagging runs sequentially (no concurrency against a single local model instance).
+- Ollama tagging runs sequentially (no concurrency against a single local model instance) — this also means a CLI `scan` and a browser-triggered scan running at the same time will queue behind each other on the Ollama side, just more slowly.
 
 ## Future plans
 

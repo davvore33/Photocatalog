@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Scansiona - Photocatalog{% endblock %}
+{% block content %}
+
+<h1>Scansiona una cartella</h1>
+
+{% if error == 'notfound' %}
+  <p class="error">Il percorso indicato non è una cartella valida.</p>
+{% endif %}
+
+<div class="shortcuts">
+  {% for label, path in shortcuts %}
+    <a href="{{ url_for('scan_page', path=path) }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<form class="browse-form" method="get" action="{{ url_for('scan_page') }}">
+  <input type="text" name="path" value="{{ browse_path }}" placeholder="/percorso/della/cartella">
+  <button type="submit">Vai</button>
+</form>
+
+<div class="browser">
+  {% if parent %}
+    <a class="dir up" href="{{ url_for('scan_page', path=parent) }}">.. (cartella superiore)</a>
+  {% endif %}
+  {% if list_error %}
+    <p class="error">⚠️ {{ list_error }}</p>
+  {% elif entries %}
+    {% for entry in entries %}
+      <a class="dir" href="{{ url_for('scan_page', path=entry) }}">📁 {{ entry.name }}</a>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Nessuna sottocartella qui.</p>
+  {% endif %}
+</div>
+
+<form class="scan-form" method="post" action="{{ url_for('scan_start') }}">
+  <input type="hidden" name="folder" value="{{ browse_path }}">
+  <label>
+    Modello vision
+    <input type="text" name="model" value="{{ default_model }}">
+  </label>
+  <button type="submit" id="scan-submit" {% if status.status == 'running' %}disabled{% endif %}>
+    Scansiona «{{ browse_path.name or browse_path }}»
+  </button>
+</form>
+
+<form class="stop-form" method="post" action="{{ url_for('scan_stop') }}">
+  <input type="hidden" name="folder" value="{{ browse_path }}">
+  <button type="submit" id="scan-stop" class="danger" hidden>Ferma lo scan in corso</button>
+</form>
+
+<div id="progress-panel"></div>
+
+<script>
+const panel = document.getElementById('progress-panel');
+const submitBtn = document.getElementById('scan-submit');
+const stopBtn = document.getElementById('scan-stop');
+
+function render(status) {
+  if (status.status === 'idle') {
+    panel.innerHTML = '';
+    submitBtn.disabled = false;
+    stopBtn.hidden = true;
+    return;
+  }
+
+  submitBtn.disabled = (status.status === 'running');
+  stopBtn.hidden = (status.status !== 'running');
+
+  const counts = status.counts || {};
+  const phaseLabel = {
+    scanning: 'Scansione file...',
+    tagging: 'Tagging con ' + (status.model || '') + '...',
+    stopping: 'Fermando... (può richiedere fino a ~30s se sta taggando un\'immagine)',
+    done: 'Completato',
+    cancelled: 'Fermato dall\'utente',
+    error: 'Errore',
+  }[status.phase] || status.phase;
+
+  let html = '<h2>' + phaseLabel + '</h2>';
+  html += '<p>Cartella: <code>' + (status.folder || '') + '</code></p>';
+  html += '<p>' + (counts.scanned || 0) + ' file visti</p>';
+  html += '<ul class="scan-counts">';
+  html += '<li>aggiunti: ' + (counts.added || 0) + '</li>';
+  html += '<li>aggiornati: ' + (counts.updated || 0) + '</li>';
+  html += '<li>invariati: ' + (counts.unchanged || 0) + '</li>';
+  html += '<li>spostati: ' + (counts.moved || 0) + '</li>';
+  html += '<li>taggati: ' + (counts.tagged || 0) + '</li>';
+  html += '<li>errori tag: ' + (counts.tag_errors || 0) + '</li>';
+  html += '</ul>';
+
+  if (status.status === 'error') {
+    html += '<p class="error">' + status.error + '</p>';
+  }
+  if (status.status === 'done' || status.status === 'cancelled') {
+    html += '<p><a href="{{ url_for("index") }}">Vai al catalogo »</a></p>';
+  }
+
+  panel.innerHTML = html;
+}
+
+async function poll() {
+  try {
+    const res = await fetch("{{ url_for('scan_status') }}");
+    const data = await res.json();
+    render(data);
+  } catch (e) {
+    // network hiccup, ignore and retry on next tick
+  }
+}
+
+const scanForm = document.querySelector('.scan-form');
+scanForm.addEventListener('submit', (event) => {
+  const segments = "{{ browse_path }}".split('/').filter(Boolean);
+  const risky = segments.length <= 1; // e.g. "/", "/Users", "/System", "/Volumes"
+  if (risky && !confirm(
+    'Stai per scansionare "' + "{{ browse_path }}" + '", una cartella molto ampia. ' +
+    'Potrebbe richiedere ore e attraversare file di sistema. Continuare?'
+  )) {
+    event.preventDefault();
+  }
+});
+
+render({{ status | tojson }});
+setInterval(poll, 1500);
+</script>
+
+{% endblock %}

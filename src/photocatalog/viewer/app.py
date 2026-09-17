@@ -2,9 +2,32 @@ import json
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, abort, g, render_template, request, send_file
+from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
 from .. import config, db, thumbnails
+from . import jobs
+
+
+def _list_subdirs(path: Path) -> tuple[list[Path], str | None]:
+    try:
+        entries = [p for p in path.iterdir() if p.is_dir() and not p.name.startswith(".")]
+    except PermissionError:
+        return [], "Permesso negato per questa cartella."
+    except OSError as exc:
+        return [], f"Impossibile leggere questa cartella: {exc}"
+    return sorted(entries, key=lambda p: p.name.lower()), None
+
+
+def _shortcuts() -> list[tuple[str, Path]]:
+    home = Path.home()
+    candidates = [
+        ("Home", home),
+        ("Scrivania", home / "Desktop"),
+        ("Immagini", home / "Pictures"),
+        ("Documenti", home / "Documents"),
+        ("Volumi esterni", Path("/Volumes")),
+    ]
+    return [(label, p) for label, p in candidates if p.is_dir()]
 
 
 def create_app(db_path: Path) -> Flask:
@@ -141,6 +164,51 @@ def create_app(db_path: Path) -> Flask:
         if not path.exists():
             abort(404)
         return send_file(path, mimetype="image/jpeg")
+
+    @app.route("/scan")
+    def scan_page():
+        raw_path = request.args.get("path", "").strip()
+        browse_path = Path(raw_path).expanduser() if raw_path else Path.home()
+        if not browse_path.is_dir():
+            browse_path = Path.home()
+
+        entries, list_error = _list_subdirs(browse_path)
+
+        return render_template(
+            "scan.html",
+            status=jobs.get_status(),
+            browse_path=browse_path,
+            parent=browse_path.parent if browse_path != browse_path.parent else None,
+            entries=entries,
+            list_error=list_error,
+            shortcuts=_shortcuts(),
+            default_model=jobs.default_model(),
+            error=request.args.get("error"),
+        )
+
+    @app.route("/scan/start", methods=["POST"])
+    def scan_start():
+        folder_str = request.form.get("folder", "").strip()
+        model = request.form.get("model", "").strip() or jobs.default_model()
+        folder = Path(folder_str).expanduser()
+
+        if not folder.is_dir():
+            return redirect(url_for("scan_page", path=folder_str, error="notfound"))
+
+        started = jobs.start_scan(app.config["DB_PATH"], folder, model)
+        if not started:
+            return redirect(url_for("scan_page", path=folder_str))
+
+        return redirect(url_for("scan_page", path=folder_str))
+
+    @app.route("/scan/status")
+    def scan_status():
+        return jsonify(jobs.get_status())
+
+    @app.route("/scan/stop", methods=["POST"])
+    def scan_stop():
+        jobs.request_stop()
+        return redirect(url_for("scan_page", path=request.form.get("folder", "")))
 
     @app.route("/original/<int:image_id>")
     def original(image_id: int):

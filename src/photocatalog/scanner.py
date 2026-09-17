@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,9 +90,19 @@ def _extract_static_fields(path: Path, file_hash: str) -> dict | None:
     return fields
 
 
-def scan_stage_a(conn: sqlite3.Connection, folder: Path, summary: ScanSummary) -> None:
-    """Walk the folder, dedupe by hash, and populate everything that needs no network."""
+def scan_stage_a(
+    conn: sqlite3.Connection,
+    folder: Path,
+    summary: ScanSummary,
+    cancel_event: threading.Event | None = None,
+) -> bool:
+    """Walk the folder, dedupe by hash, and populate everything that needs no network.
+
+    Returns False if cancel_event was set before the walk finished, True otherwise.
+    """
     for path in iter_image_files(folder):
+        if cancel_event is not None and cancel_event.is_set():
+            return False
         summary.scanned += 1
         path_str = str(path.resolve())
 
@@ -154,18 +165,26 @@ def scan_stage_a(conn: sqlite3.Connection, folder: Path, summary: ScanSummary) -
             db.insert_image(conn, fields)
             summary.added += 1
 
+    return True
+
 
 def scan_stage_b(
     conn: sqlite3.Connection,
     summary: ScanSummary,
     model: str = config.DEFAULT_VISION_MODEL,
     retry_errors: bool = False,
-) -> None:
-    """Tag every pending (and optionally errored) image via the Ollama vision model."""
+    cancel_event: threading.Event | None = None,
+) -> bool:
+    """Tag every pending (and optionally errored) image via the Ollama vision model.
+
+    Returns False if cancel_event was set before tagging finished, True otherwise.
+    """
     statuses = ["pending"] + (["error"] if retry_errors else [])
     rows = db.images_by_status(conn, statuses)
 
     for row in rows:
+        if cancel_event is not None and cancel_event.is_set():
+            return False
         path = Path(row["path"])
         if not path.exists():
             continue
@@ -198,6 +217,8 @@ def scan_stage_b(
             },
         )
         summary.tagged += 1
+
+    return True
 
 
 def prune(conn: sqlite3.Connection) -> list[str]:

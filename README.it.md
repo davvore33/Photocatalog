@@ -39,6 +39,21 @@ photocatalog prune                        # rimuove le voci di file non più esi
 
 Il catalogo (`~/.photocatalog/catalog.db`) e le thumbnail (`~/.photocatalog/thumbnails/`) vivono fuori dal repository. Lo scan è incrementale e ripartibile: ri-lanciare `scan` sulla stessa cartella salta i file invariati e riprende il tagging da dove interrotto.
 
+### Scansionare dal browser
+
+Il viewer ha una pagina **"+ Scansiona"** (`/scan`) con un browser di cartelle (scorciatoie per Home/Scrivania/Immagini/Documenti/`/Volumes`, più un campo per il percorso) per scegliere una cartella e avviare uno scan senza toccare il terminale. Lo scan gira in un thread in background sul server e la pagina mostra il progresso live (file visti, taggati, errori) via polling finché non finisce — non serve tenere la scheda aperta, `photocatalog stats` o un refresh di `/scan` mostrano lo stesso stato. Solo uno scan alla volta, e mentre è in corso compare un pulsante **"Ferma lo scan in corso"** per interromperlo (si ferma al prossimo file, quindi può richiedere fino a ~30s se sta taggando). Avviare uno scan su un percorso molto superficiale (come `/` o `/Users`) chiede prima conferma, perché potrebbe significare scansionare l'intero disco.
+
+### App di avvio per macOS
+
+Per avviare il viewer con un doppio click invece che dal terminale:
+
+```bash
+scripts/build_macos_app.sh                 # installa Photocatalog.app in /Applications
+scripts/build_macos_app.sh "$HOME/Applications"   # oppure qualsiasi destinazione scrivibile
+```
+
+L'app avvia `photocatalog serve` sul catalogo di default se non è già in esecuzione, poi apre `http://127.0.0.1:5000` nel browser predefinito. Non ha una finestra propria (`LSUIElement`), quindi si avvia e si toglie di mezzo.
+
 ## Sviluppo
 
 ```bash
@@ -51,7 +66,7 @@ pytest
 - Per i file RAW viene usata solo l'anteprima incorporata, non i dati reali del sensore — tag, colore dominante e thumbnail riflettono il JPEG generato dalla fotocamera, non uno sviluppo RAW completo.
 - Altri formati RAW oltre ARW/CR2/CR3/NEF/RAF potrebbero funzionare se supportati da LibRaw, ma non sono testati.
 - Foto HEIC richiedono l'extra `pillow-heif`.
-- Il tagging via Ollama è sequenziale (nessuna concorrenza sulla singola istanza del modello locale).
+- Il tagging via Ollama è sequenziale (nessuna concorrenza sulla singola istanza del modello locale) — questo significa anche che uno scan da CLI e uno avviato dal browser, se eseguiti insieme, si mettono in coda a vicenda lato Ollama, semplicemente rallentando.
 
 ## Sviluppi futuri
 

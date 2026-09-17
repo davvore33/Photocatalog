@@ -15,12 +15,129 @@ body {
 
 .site-header {
   padding: 1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 .logo {
   font-weight: 600;
   font-size: 1.2rem;
   text-decoration: none;
   color: inherit;
+}
+.nav-link {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.error {
+  color: #c0392b;
+}
+
+.shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+.shortcuts a {
+  background: var(--bg-card);
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  text-decoration: none;
+  color: inherit;
+  font-size: 0.85rem;
+}
+
+.browse-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.browse-form input {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.browser {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+}
+.browser .dir {
+  display: block;
+  padding: 0.5rem 0.8rem;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.browser .dir:last-child { border-bottom: none; }
+.browser .dir.up { color: var(--muted); }
+
+.scan-form {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.scan-form label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.scan-form input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.scan-form button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  cursor: pointer;
+}
+.scan-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stop-form {
+  margin-bottom: 1rem;
+}
+.stop-form button.danger {
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid #c0392b;
+  background: transparent;
+  color: #c0392b;
+  cursor: pointer;
+}
+
+#progress-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 1rem;
+}
+#progress-panel:empty { border: none; padding: 0; }
+.scan-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  list-style: none;
+  padding: 0;
+  font-size: 0.9rem;
 }
 
 .filters {
