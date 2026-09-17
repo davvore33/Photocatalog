@@ -10,6 +10,8 @@ Strumento locale per catalogare foto: scansiona una cartella, ed estrae per ogni
 
 I dati vengono salvati in un catalogo SQLite locale, consultabile tramite un piccolo viewer web.
 
+I file RAW di Sony (`.ARW`), Canon (`.CR2`/`.CR3`), Nikon (`.NEF`) e Fujifilm (`.RAF`) sono supportati tramite il **JPEG di anteprima incorporato** (estratto con [rawpy](https://github.com/letmaik/rawpy)/LibRaw) — nessuna demosaicizzazione completa, quindi è veloce e non richiede setup aggiuntivo. L'EXIF viene letto dal file RAW stesso quando possibile, altrimenti dai metadati dell'anteprima; le dimensioni dell'immagine riflettono la vera risoluzione del sensore.
+
 ## Screenshot
 
 | Griglia del catalogo con filtri | Vista di dettaglio con tag, colore ed EXIF |
@@ -46,7 +48,8 @@ pytest
 
 ## Limiti noti (v1)
 
-- Formati RAW (.CR2, .NEF, .ARW, ...) non supportati (Pillow non li apre).
+- Per i file RAW viene usata solo l'anteprima incorporata, non i dati reali del sensore — tag, colore dominante e thumbnail riflettono il JPEG generato dalla fotocamera, non uno sviluppo RAW completo.
+- Altri formati RAW oltre ARW/CR2/CR3/NEF/RAF potrebbero funzionare se supportati da LibRaw, ma non sono testati.
 - Foto HEIC richiedono l'extra `pillow-heif`.
 - Il tagging via Ollama è sequenziale (nessuna concorrenza sulla singola istanza del modello locale).
 

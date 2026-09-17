@@ -1,9 +1,12 @@
+import io
+from fractions import Fraction
 from pathlib import Path
 
 import piexif
 from PIL import Image
+from PIL.TiffImagePlugin import IFDRational
 
-from photocatalog.exif_extract import extract_exif, promote_fields
+from photocatalog.exif_extract import _jsonify, extract_exif, promote_fields
 
 
 def _make_jpeg_with_exif(path: Path):
@@ -66,3 +69,44 @@ def test_extract_exif_no_exif(tmp_path: Path):
     promoted = promote_fields(exif)
 
     assert promoted["exif_camera_make"] is None
+
+
+def test_jsonify_ifdrational_is_json_safe():
+    import json
+
+    value = _jsonify(IFDRational(16, 10))
+    assert value == 1.6
+    json.dumps(value)  # must not raise
+
+
+def test_jsonify_plain_fraction_is_json_safe():
+    import json
+
+    value = _jsonify(Fraction(3, 2))
+    assert value == 1.5
+    json.dumps(value)  # must not raise
+
+
+def test_extract_exif_raw_falls_back_to_preview_bytes(tmp_path: Path):
+    # A .raf path piexif can't parse (not a real TIFF/JPEG on disk), but the
+    # caller supplies the embedded preview JPEG's bytes as a fallback - this
+    # mirrors how scanner.py handles RAW files.
+    fake_raw_path = tmp_path / "photo.raf"
+    fake_raw_path.write_bytes(b"FUJIFILMCCD-RAW not-a-real-raw-file")
+
+    preview = io.BytesIO()
+    exif_dict = {
+        "0th": {piexif.ImageIFD.Make: b"FUJIFILM"},
+        "Exif": {},
+        "GPS": {},
+        "1st": {},
+        "thumbnail": None,
+    }
+    Image.new("RGB", (30, 30), (5, 5, 5)).save(
+        preview, "jpeg", exif=piexif.dump(exif_dict)
+    )
+
+    exif = extract_exif(fake_raw_path, fallback_bytes=preview.getvalue())
+    promoted = promote_fields(exif)
+
+    assert promoted["exif_camera_make"] == "FUJIFILM"

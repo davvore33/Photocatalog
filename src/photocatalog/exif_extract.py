@@ -1,8 +1,11 @@
 import base64
+import io
 from pathlib import Path
 
 import piexif
 from PIL import ExifTags, Image
+
+from . import raw_extract
 
 _PIEXIF_EXTENSIONS = {".jpg", ".jpeg", ".tif", ".tiff"}
 
@@ -36,7 +39,15 @@ def _jsonify(value):
             return base64.b64encode(value).decode("ascii")
     if isinstance(value, float) and (value != value):  # NaN
         return None
-    return value
+    if isinstance(value, (int, float, str, bool)) or value is None:
+        return value
+    if hasattr(value, "numerator") and hasattr(value, "denominator"):
+        # Covers Pillow's IFDRational and other Fraction-like rationals.
+        try:
+            return float(value)
+        except (TypeError, ZeroDivisionError):
+            return None
+    return str(value)
 
 
 def _dms_to_decimal(dms, ref: str | None) -> float | None:
@@ -67,9 +78,9 @@ def _extract_via_piexif(path: Path) -> dict:
     return result
 
 
-def _extract_via_pillow(path: Path) -> dict:
+def _extract_via_pillow(source: Path | io.BytesIO) -> dict:
     result: dict = {}
-    with Image.open(path) as img:
+    with Image.open(source) as img:
         exif = img.getexif()
         if not exif:
             return result
@@ -105,17 +116,34 @@ def _extract_via_pillow(path: Path) -> dict:
     return result
 
 
-def extract_exif(path: Path) -> dict:
-    """Return the full EXIF data as a JSON-safe nested dict, grouped by IFD."""
+def extract_exif(path: Path, fallback_bytes: bytes | None = None) -> dict:
+    """Return the full EXIF data as a JSON-safe nested dict, grouped by IFD.
+
+    For RAW files, ``fallback_bytes`` should be the embedded preview JPEG:
+    RAW containers that aren't TIFF-based (e.g. .cr3, .raf) can't be read by
+    piexif directly, but the camera-written EXIF usually survives in the
+    preview JPEG's own APP1 segment.
+    """
     ext = path.suffix.lower()
-    try:
-        if ext in _PIEXIF_EXTENSIONS:
+    is_raw = ext in raw_extract.RAW_EXTENSIONS
+
+    if ext in _PIEXIF_EXTENSIONS or is_raw:
+        try:
             data = _extract_via_piexif(path)
             if data:
                 return data
-        return _extract_via_pillow(path)
+        except Exception:
+            pass
+
+    try:
+        if fallback_bytes is not None:
+            return _extract_via_pillow(io.BytesIO(fallback_bytes))
+        if not is_raw:
+            return _extract_via_pillow(path)
     except Exception:
-        return {}
+        pass
+
+    return {}
 
 
 def promote_fields(exif: dict) -> dict:

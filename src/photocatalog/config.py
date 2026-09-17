@@ -15,6 +15,10 @@ VISION_IMAGE_QUALITY = 85
 
 THUMBNAIL_SIZE = (320, 320)
 
-SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+SUPPORTED_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff",
+    # RAW formats: handled via their embedded JPEG preview, not full demosaicing.
+    ".arw", ".cr2", ".cr3", ".nef", ".raf",
+}
 
 DEFAULT_PAGE_SIZE = 60

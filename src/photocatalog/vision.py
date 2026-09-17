@@ -8,7 +8,7 @@ from pathlib import Path
 import requests
 from PIL import Image, ImageOps
 
-from . import config
+from . import config, raw_extract
 
 PROMPT = (
     "Look at this photo and return ONLY JSON in the form "
@@ -25,8 +25,15 @@ class VisionError(Exception):
     pass
 
 
+def _load_source_image(path: Path) -> Image.Image:
+    if path.suffix.lower() in raw_extract.RAW_EXTENSIONS:
+        img, _, _ = raw_extract.extract_preview(path)
+        return img
+    return Image.open(path)
+
+
 def _prepare_image_b64(path: Path) -> str:
-    with Image.open(path) as img:
+    with _load_source_image(path) as img:
         img = ImageOps.exif_transpose(img)
         img = img.convert("RGB")
         img.thumbnail(

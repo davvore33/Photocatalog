@@ -10,6 +10,8 @@ A local tool for cataloging photos: it scans a folder and, for every image, extr
 
 Everything is stored in a local SQLite catalog, browsable through a small local web viewer.
 
+RAW files from Sony (`.ARW`), Canon (`.CR2`/`.CR3`), Nikon (`.NEF`), and Fujifilm (`.RAF`) are supported via their **embedded JPEG preview** (extracted with [rawpy](https://github.com/letmaik/rawpy)/LibRaw) — no full demosaicing, so it's fast and needs no extra setup. EXIF is read from the RAW file itself when possible, falling back to the preview's own metadata otherwise; image dimensions reflect the true sensor resolution.
+
 ## Screenshots
 
 | Catalog grid with filters | Detail view with tags, color, and EXIF |
@@ -46,7 +48,8 @@ pytest
 
 ## Known limitations (v1)
 
-- RAW formats (.CR2, .NEF, .ARW, ...) are not supported (Pillow can't open them).
+- Only the embedded preview is used for RAW files, not the actual sensor data — tags, dominant color, and the thumbnail reflect the camera-generated JPEG preview, not a full RAW development.
+- Other RAW formats beyond ARW/CR2/CR3/NEF/RAF may still work if LibRaw supports them, but are untested.
 - HEIC photos require the `pillow-heif` extra.
 - Ollama tagging runs sequentially (no concurrency against a single local model instance).
 

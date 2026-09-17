@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
-from . import color_extract, config, db, exif_extract, thumbnails, vision
+from . import color_extract, config, db, exif_extract, raw_extract, thumbnails, vision
 from .hashing import sha256_file, stat_fingerprint
 
 
@@ -32,8 +32,38 @@ def iter_image_files(folder: Path):
             yield path
 
 
+def _extract_static_fields_raw(path: Path, file_hash: str) -> dict | None:
+    """Same as _extract_static_fields, for RAW files: everything is derived from
+    the embedded JPEG preview rather than full demosaicing of the sensor data."""
+    try:
+        preview_img, preview_bytes, (width, height) = raw_extract.extract_preview(path)
+    except raw_extract.RawPreviewError:
+        return None
+
+    with preview_img:
+        exif = exif_extract.extract_exif(path, fallback_bytes=preview_bytes)
+        promoted = exif_extract.promote_fields(exif)
+        color = color_extract.dominant_color_from_image(preview_img)
+        thumbnails.generate_thumbnail_from_image(preview_img, file_hash)
+
+    fields = {
+        "width": width,
+        "height": height,
+        "format": path.suffix.upper().lstrip("."),
+        "exif_json": json.dumps(exif),
+        "dominant_color_hex": color["hex"],
+        "dominant_color_name": color["name"],
+        "palette_json": color_extract.palette_to_json(color["palette"]),
+    }
+    fields.update(promoted)
+    return fields
+
+
 def _extract_static_fields(path: Path, file_hash: str) -> dict | None:
     """Everything that doesn't need the network: dimensions, EXIF, color, thumbnail."""
+    if path.suffix.lower() in raw_extract.RAW_EXTENSIONS:
+        return _extract_static_fields_raw(path, file_hash)
+
     try:
         with Image.open(path) as img:
             width, height = img.size

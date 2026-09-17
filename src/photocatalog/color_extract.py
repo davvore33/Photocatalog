@@ -51,42 +51,46 @@ def _color_name(r: int, g: int, b: int) -> str:
     return f"{temperature} {family}"
 
 
-def extract_dominant_color(path: Path) -> dict:
+def dominant_color_from_image(img: Image.Image) -> dict:
     """Return {hex, name, palette: [{hex, fraction}, ...]} for the image's colors."""
+    img = ImageOps.exif_transpose(img)
+    img = img.convert("RGB")
+    img.thumbnail(_DOWNSAMPLE_SIZE, Image.BILINEAR)
+
+    quantized = img.quantize(colors=_QUANTIZE_COLORS, method=Image.MEDIANCUT)
+    counts = quantized.getcolors(maxcolors=_QUANTIZE_COLORS)
+    if not counts:
+        return {"hex": None, "name": None, "palette": []}
+
+    palette = quantized.getpalette()
+    counts.sort(key=lambda item: item[0], reverse=True)
+    total = sum(count for count, _ in counts)
+
+    entries = []
+    for count, index in counts:
+        r, g, b = palette[index * 3 : index * 3 + 3]
+        entries.append(
+            {
+                "hex": f"#{r:02x}{g:02x}{b:02x}",
+                "fraction": round(count / total, 4),
+                "rgb": (r, g, b),
+            }
+        )
+
+    dominant = entries[0]
+    r, g, b = dominant["rgb"]
+    return {
+        "hex": dominant["hex"],
+        "name": _color_name(r, g, b),
+        "palette": [
+            {"hex": e["hex"], "fraction": e["fraction"]} for e in entries[:5]
+        ],
+    }
+
+
+def extract_dominant_color(path: Path) -> dict:
     with Image.open(path) as img:
-        img = ImageOps.exif_transpose(img)
-        img = img.convert("RGB")
-        img.thumbnail(_DOWNSAMPLE_SIZE, Image.BILINEAR)
-
-        quantized = img.quantize(colors=_QUANTIZE_COLORS, method=Image.MEDIANCUT)
-        counts = quantized.getcolors(maxcolors=_QUANTIZE_COLORS)
-        if not counts:
-            return {"hex": None, "name": None, "palette": []}
-
-        palette = quantized.getpalette()
-        counts.sort(key=lambda item: item[0], reverse=True)
-        total = sum(count for count, _ in counts)
-
-        entries = []
-        for count, index in counts:
-            r, g, b = palette[index * 3 : index * 3 + 3]
-            entries.append(
-                {
-                    "hex": f"#{r:02x}{g:02x}{b:02x}",
-                    "fraction": round(count / total, 4),
-                    "rgb": (r, g, b),
-                }
-            )
-
-        dominant = entries[0]
-        r, g, b = dominant["rgb"]
-        return {
-            "hex": dominant["hex"],
-            "name": _color_name(r, g, b),
-            "palette": [
-                {"hex": e["hex"], "fraction": e["fraction"]} for e in entries[:5]
-            ],
-        }
+        return dominant_color_from_image(img)
 
 
 def palette_to_json(palette: list[dict]) -> str:
