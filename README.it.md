@@ -68,6 +68,14 @@ Il filtro tag è un multi-select (⌘/Ctrl+click per selezionarne più di uno) c
 
 Il pulsante **⬇ Esporta CSV** scarica tutte le immagini che corrispondono ai *filtri correnti* (non solo la pagina visibile) in un CSV: nome file, percorso, dimensioni, formato, peso, camera/obiettivo/data/GPS dall'EXIF, colore dominante, tag, e l'EXIF grezzo completo in JSON.
 
+### Log e telemetria sui tempi
+
+Ogni esecuzione (CLI o avviata dal browser) scrive log **sia sul terminale che su un file rotante** in `~/.photocatalog/logs/photocatalog.log` (5MB × 3 backup) — inizio/fine scan, risultato di ogni tagging, file saltati ed errori, tutti con timestamp. Il riepilogo della CLI (`Scanning ...`, `X tagged, Y errors`) resta com'è; il file di log ha la traccia completa per-file, anche per gli scan avviati dal browser, che prima non avevano alcun output visibile da nessuna parte.
+
+La durata di ogni tentativo di tagging viene registrata per modello nel DB del catalogo. Questo alimenta:
+- **Stato live**: il badge in alto a destra e il pannello di progresso su `/scan` mostrano il tempo trascorso e la velocità media di questo scan (s/immagine) mentre è in corso.
+- **`photocatalog stats`** e la **pagina `/scan`**: una tabella "velocità media per modello" (riuscite/totali e media secondi/immagine) costruita sullo storico completo — utile per confrontare ad esempio `qwen3-vl:8b` vs `qwen3-vl:30b` su questa macchina.
+
 ## Sviluppo
 
 ```bash

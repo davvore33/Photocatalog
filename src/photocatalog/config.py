@@ -3,6 +3,10 @@ from pathlib import Path
 DATA_DIR = Path.home() / ".photocatalog"
 DEFAULT_DB_PATH = DATA_DIR / "catalog.db"
 THUMBNAILS_DIR = DATA_DIR / "thumbnails"
+LOG_DIR = DATA_DIR / "logs"
+LOG_FILE = LOG_DIR / "photocatalog.log"
+LOG_MAX_BYTES = 5 * 1024 * 1024
+LOG_BACKUP_COUNT = 3
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 DEFAULT_VISION_MODEL = "qwen3-vl:8b"

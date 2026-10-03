@@ -54,6 +54,28 @@
 
 <div id="progress-panel"></div>
 
+{% if model_stats %}
+<h2>{{ t('scan.model_stats_heading') }}</h2>
+<table class="model-stats-table">
+  <thead>
+    <tr>
+      <th>{{ t('scan.model_stats_model') }}</th>
+      <th>{{ t('scan.model_stats_count') }}</th>
+      <th>{{ t('scan.model_stats_avg') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in model_stats %}
+      <tr>
+        <td>{{ row.model }}</td>
+        <td>{{ row.successes }}/{{ row.n }}</td>
+        <td>{{ '%.1f'|format(row.avg_seconds) + 's' if row.avg_seconds is not none else '—' }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
 <script>
 const panel = document.getElementById('progress-panel');
 const submitBtn = document.getElementById('scan-submit');
@@ -75,6 +97,13 @@ function render(status) {
   let html = '<h2>' + phaseLabel(status) + '</h2>';
   html += '<p>' + T.folder_label + ': <code>' + (status.folder || '') + '</code></p>';
   html += '<p>' + (counts.scanned || 0) + ' ' + T.files_seen + '</p>';
+  if (status.elapsed_seconds !== null && status.elapsed_seconds !== undefined) {
+    html += '<p>' + T.elapsed_label + ': ' + status.elapsed_seconds.toFixed(1) + 's</p>';
+  }
+  if (counts.tagged) {
+    const avg = counts.tag_seconds / counts.tagged;
+    html += '<p>' + T.avg_speed_label + ': ' + avg.toFixed(1) + 's/img</p>';
+  }
   html += '<ul class="scan-counts">';
   html += '<li>' + T.count_added + ': ' + (counts.added || 0) + '</li>';
   html += '<li>' + T.count_updated + ': ' + (counts.updated || 0) + '</li>';

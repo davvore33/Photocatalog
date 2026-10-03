@@ -80,6 +80,32 @@ def test_request_stop_when_idle_returns_false():
     assert jobs.request_stop() is False
 
 
+def test_status_includes_elapsed_seconds(tmp_path: Path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    Image.new("RGB", (20, 20), (10, 20, 30)).save(folder / "a.jpg", "JPEG")
+    db_path = tmp_path / "catalog.db"
+
+    def slow_tags(*_args, **_kwargs):
+        time.sleep(0.2)
+        return ["x"], "{}"
+
+    with patch("photocatalog.vision.generate_tags", side_effect=slow_tags):
+        assert jobs.start_scan(db_path, folder, "fake-model") is True
+        time.sleep(0.05)
+        live_status = jobs.get_status()
+        assert live_status["elapsed_seconds"] is not None
+        assert live_status["elapsed_seconds"] >= 0
+
+        final_status = _wait_until_idle_or_done()
+
+    assert final_status["elapsed_seconds"] >= 0.2
+    # elapsed should freeze once done, not keep growing on a later read
+    frozen = jobs.get_status()["elapsed_seconds"]
+    time.sleep(0.1)
+    assert jobs.get_status()["elapsed_seconds"] == frozen
+
+
 def test_start_scan_reports_error(tmp_path: Path):
     folder = tmp_path / "photos"
     folder.mkdir()

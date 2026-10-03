@@ -50,6 +50,16 @@ CREATE INDEX IF NOT EXISTS idx_images_camera   ON images(exif_camera_model);
 CREATE INDEX IF NOT EXISTS idx_images_color    ON images(dominant_color_name);
 CREATE INDEX IF NOT EXISTS idx_images_status   ON images(tags_status);
 CREATE INDEX IF NOT EXISTS idx_image_tags_tag  ON image_tags(tag_id);
+
+CREATE TABLE IF NOT EXISTS tagging_events (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    model             TEXT NOT NULL,
+    duration_seconds  REAL NOT NULL,
+    success           INTEGER NOT NULL,
+    created_at        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tagging_events_model ON tagging_events(model);
 """
 
 
@@ -159,6 +169,46 @@ def images_by_status(conn: sqlite3.Connection, statuses: list[str]) -> list[sqli
     ).fetchall()
 
 
+def record_tagging_event(
+    conn: sqlite3.Connection,
+    model: str,
+    duration_seconds: float,
+    success: bool,
+    created_at: str,
+) -> None:
+    conn.execute(
+        "INSERT INTO tagging_events (model, duration_seconds, success, created_at) "
+        "VALUES (?, ?, ?, ?)",
+        (model, duration_seconds, int(success), created_at),
+    )
+    conn.commit()
+
+
+def model_speed_stats(conn: sqlite3.Connection) -> list[dict]:
+    """Per-model tagging throughput, most-used model first."""
+    rows = conn.execute(
+        """
+        SELECT
+            model,
+            COUNT(*) AS n,
+            SUM(success) AS successes,
+            AVG(CASE WHEN success THEN duration_seconds END) AS avg_seconds
+        FROM tagging_events
+        GROUP BY model
+        ORDER BY n DESC
+        """
+    ).fetchall()
+    return [
+        {
+            "model": row["model"],
+            "n": row["n"],
+            "successes": row["successes"],
+            "avg_seconds": row["avg_seconds"],
+        }
+        for row in rows
+    ]
+
+
 def stats(conn: sqlite3.Connection) -> dict:
     total = conn.execute("SELECT COUNT(*) AS n FROM images").fetchone()["n"]
     by_status = {
@@ -178,4 +228,5 @@ def stats(conn: sqlite3.Connection) -> dict:
         "total_images": total,
         "by_status": by_status,
         "top_tags": [(row["name"], row["n"]) for row in top_tags],
+        "model_stats": model_speed_stats(conn),
     }

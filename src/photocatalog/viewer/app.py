@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import Flask, Response, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
-from .. import config, db, thumbnails
+from .. import config, db, logging_setup, thumbnails
 from . import i18n, jobs
 
 EXPORT_COLUMNS = [
@@ -122,6 +122,7 @@ def _shortcuts() -> list[tuple[str, Path]]:
 
 
 def create_app(db_path: Path) -> Flask:
+    logging_setup.setup_logging()
     app = Flask(__name__)
     app.config["DB_PATH"] = db_path
 
@@ -277,6 +278,7 @@ def create_app(db_path: Path) -> Flask:
 
     @app.route("/scan")
     def scan_page():
+        conn = get_conn()
         raw_path = request.args.get("path", "").strip()
         browse_path = Path(raw_path).expanduser() if raw_path else Path.home()
         if not browse_path.is_dir():
@@ -294,6 +296,7 @@ def create_app(db_path: Path) -> Flask:
             shortcuts=_shortcuts(),
             default_model=jobs.default_model(),
             error=request.args.get("error"),
+            model_stats=db.model_speed_stats(conn),
         )
 
     @app.route("/scan/start", methods=["POST"])

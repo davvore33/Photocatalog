@@ -340,6 +340,19 @@ body {
 
 .muted { color: var(--muted); }
 
+.model-stats-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin: 0.5rem 0 1.5rem;
+  max-width: 480px;
+}
+.model-stats-table th, .model-stats-table td {
+  text-align: left;
+  padding: 0.35rem 0.8rem 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.model-stats-table th { color: var(--muted); font-weight: 500; }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --border: #3a3a3a;

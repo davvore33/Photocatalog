@@ -38,6 +38,8 @@
       count_moved: {{ t('scan.counts_moved') | tojson }},
       count_tagged: {{ t('scan.counts_tagged') | tojson }},
       count_tag_errors: {{ t('scan.counts_tag_errors') | tojson }},
+      elapsed_label: {{ t('scan.elapsed_label') | tojson }},
+      avg_speed_label: {{ t('scan.avg_speed_label') | tojson }},
       confirm_risky: {{ t('scan.confirm_risky') | tojson }},
       catalog_url: {{ url_for('index') | tojson }},
       scan_status_url: {{ url_for('scan_status') | tojson }},
@@ -64,7 +66,11 @@
         const text = document.getElementById('global-scan-text');
         if (data.status === 'running') {
           badge.hidden = false;
-          text.textContent = phaseLabel(data);
+          let label = phaseLabel(data);
+          if (data.elapsed_seconds !== null && data.elapsed_seconds !== undefined) {
+            label += ' · ' + data.elapsed_seconds.toFixed(0) + 's';
+          }
+          text.textContent = label;
         } else {
           badge.hidden = true;
         }

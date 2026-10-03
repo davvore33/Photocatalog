@@ -74,7 +74,10 @@ def generate_tags(
     ollama_url: str = config.OLLAMA_URL,
 ) -> tuple[list[str], str]:
     """Call Ollama's vision model on the image. Returns (tags, raw_response_text)."""
-    image_b64 = _prepare_image_b64(path)
+    try:
+        image_b64 = _prepare_image_b64(path)
+    except OSError as exc:
+        raise VisionError(str(exc)) from exc
 
     payload = {
         "model": model,

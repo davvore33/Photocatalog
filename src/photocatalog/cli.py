@@ -1,8 +1,12 @@
 import argparse
+import logging
 import sys
+import time
 from pathlib import Path
 
-from . import config, db, scanner
+from . import config, db, logging_setup, scanner
+
+logger = logging.getLogger(__name__)
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
@@ -13,11 +17,13 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
     db_path = Path(args.db).expanduser()
     summary = scanner.ScanSummary()
+    t0 = time.monotonic()
 
     with db.open_db(db_path) as conn:
-        print(f"Scanning {folder} ...")
-        scanner.scan_stage_a(conn, folder, summary)
-        print(
+        if not args.no_scan:
+            print(f"Scanning {folder} ...")
+            scanner.scan_stage_a(conn, folder, summary, skip_raw=getattr(args, "skip_raw", False))
+            print(
             f"  {summary.scanned} files seen: "
             f"{summary.added} added, {summary.updated} updated, "
             f"{summary.moved} moved, {summary.unchanged} unchanged, "
@@ -32,12 +38,19 @@ def cmd_scan(args: argparse.Namespace) -> int:
             scanner.scan_stage_b(
                 conn, summary, model=args.model, retry_errors=args.retry_errors
             )
-            print(f"  {summary.tagged} tagged, {summary.tag_errors} errors")
+            avg = summary.tag_seconds / summary.tagged if summary.tagged else 0
+            print(
+                f"  {summary.tagged} tagged, {summary.tag_errors} errors "
+                f"({summary.tag_seconds:.1f}s total, {avg:.1f}s/image average)"
+            )
 
         if args.prune:
             removed = scanner.prune(conn)
             print(f"Pruned {len(removed)} missing files")
 
+    elapsed = time.monotonic() - t0
+    print(f"Done in {elapsed:.1f}s.")
+    logger.info("cli scan finished in %.1fs: folder=%s", elapsed, folder)
     return 0
 
 
@@ -62,6 +75,12 @@ def cmd_stats(args: argparse.Namespace) -> int:
     print("Top tags:")
     for name, count in data["top_tags"]:
         print(f"  {name}: {count}")
+    if data["model_stats"]:
+        print("Tagging speed by model:")
+        for row in data["model_stats"]:
+            avg = row["avg_seconds"]
+            avg_str = f"{avg:.1f}s/image" if avg is not None else "n/a"
+            print(f"  {row['model']}: {row['successes']}/{row['n']} ok, {avg_str} average")
     return 0
 
 
@@ -101,8 +120,13 @@ def build_parser() -> argparse.ArgumentParser:
     scan_p.add_argument("--db", default=str(config.DEFAULT_DB_PATH))
     scan_p.add_argument("--model", default=config.DEFAULT_VISION_MODEL)
     scan_p.add_argument(
-        "--no-tag", action="store_true", help="Skip the Ollama vision tagging stage"
-    )
+         "--no-tag", action="store_true", help="Skip the Ollama vision tagging stage"
+      )
+    scan_p.add_argument(
+         "--no-scan",
+         action="store_true",
+         help="Skip the folder walk (Stage A); only run tagging on pending images",
+      )
     scan_p.add_argument(
         "--retry-errors", action="store_true", help="Also retry previously failed images"
     )
@@ -131,6 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    logging_setup.setup_logging()
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)

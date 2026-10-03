@@ -1,9 +1,13 @@
 import dataclasses
+import logging
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .. import config, db, scanner
+
+logger = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _cancel_event = threading.Event()
@@ -14,6 +18,8 @@ _state = {
     "model": None,
     "started_at": None,
     "finished_at": None,
+    "started_monotonic": None,
+    "finished_monotonic": None,
     "summary": None,  # live scanner.ScanSummary instance while running
     "error": None,
 }
@@ -26,6 +32,10 @@ def _now() -> str:
 def get_status() -> dict:
     with _lock:
         summary = _state["summary"]
+        elapsed = None
+        if _state["started_monotonic"] is not None:
+            end = _state["finished_monotonic"] or time.monotonic()
+            elapsed = round(end - _state["started_monotonic"], 1)
         return {
             "status": _state["status"],
             "phase": _state["phase"],
@@ -33,6 +43,7 @@ def get_status() -> dict:
             "model": _state["model"],
             "started_at": _state["started_at"],
             "finished_at": _state["finished_at"],
+            "elapsed_seconds": elapsed,
             "error": _state["error"],
             "counts": dataclasses.asdict(summary) if summary is not None else None,
         }
@@ -51,9 +62,12 @@ def start_scan(db_path: Path, folder: Path, model: str) -> bool:
             model=model,
             started_at=_now(),
             finished_at=None,
+            started_monotonic=time.monotonic(),
+            finished_monotonic=None,
             summary=None,
             error=None,
         )
+    logger.info("browser-triggered scan started: folder=%s model=%s", folder, model)
 
     def run() -> None:
         try:
@@ -72,12 +86,31 @@ def start_scan(db_path: Path, folder: Path, model: str) -> bool:
 
             with _lock:
                 if completed:
-                    _state.update(status="done", phase="done", finished_at=_now())
+                    _state.update(
+                        status="done", phase="done", finished_at=_now(), finished_monotonic=time.monotonic()
+                    )
+                    logger.info(
+                        "browser-triggered scan done: folder=%s tagged=%d errors=%d",
+                        folder, summary.tagged, summary.tag_errors,
+                    )
                 else:
-                    _state.update(status="cancelled", phase="cancelled", finished_at=_now())
+                    _state.update(
+                        status="cancelled",
+                        phase="cancelled",
+                        finished_at=_now(),
+                        finished_monotonic=time.monotonic(),
+                    )
+                    logger.info("browser-triggered scan cancelled: folder=%s", folder)
         except Exception as exc:  # noqa: BLE001 - surface any failure to the UI
             with _lock:
-                _state.update(status="error", phase="error", finished_at=_now(), error=str(exc))
+                _state.update(
+                    status="error",
+                    phase="error",
+                    finished_at=_now(),
+                    finished_monotonic=time.monotonic(),
+                    error=str(exc),
+                )
+            logger.exception("browser-triggered scan failed: folder=%s", folder)
 
     threading.Thread(target=run, daemon=True).start()
     return True
@@ -89,6 +122,7 @@ def request_stop() -> bool:
         if _state["status"] != "running":
             return False
         _state["phase"] = "stopping"
+    logger.info("scan stop requested")
     _cancel_event.set()
     return True
 
