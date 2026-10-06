@@ -204,7 +204,7 @@ def create_app(db_path: Path) -> Flask:
 
         offset = (page - 1) * page_size
         list_sql = (
-            f"SELECT * FROM images WHERE {where} "
+            f"SELECT id, dominant_color_hex FROM images WHERE {where} "
             "ORDER BY exif_datetime_original DESC, added_at DESC "
             "LIMIT ? OFFSET ?"
         )
@@ -243,45 +243,70 @@ def create_app(db_path: Path) -> Flask:
 
     @app.route("/export.csv")
     def export_csv():
-        conn = get_conn()
         where, params, _filters = _parse_filters(request.args)
+        db_path = app.config["DB_PATH"]
+        # Tags come from a correlated subquery (one pass, no query per row), and only the
+        # exported columns are read: exif_json alone averages tens of KB per image.
         list_sql = (
-            f"SELECT * FROM images WHERE {where} "
+            "SELECT path, width, height, format, file_size, exif_camera_make, "
+            "exif_camera_model, exif_lens_model, exif_datetime_original, exif_gps_lat, "
+            "exif_gps_lon, dominant_color_name, dominant_color_hex, tags_status, "
+            "added_at, exif_json, "
+            "(SELECT GROUP_CONCAT(name, '; ') FROM (SELECT t.name AS name FROM tags t "
+            " JOIN image_tags it ON it.tag_id = t.id WHERE it.image_id = images.id "
+            " ORDER BY t.name)) AS tag_list "
+            f"FROM images WHERE {where} "
             "ORDER BY exif_datetime_original DESC, added_at DESC"
         )
-        rows = conn.execute(list_sql, params).fetchall()
 
-        buffer = io.StringIO()
-        writer = csv.writer(buffer)
-        writer.writerow(EXPORT_COLUMNS)
-        for row in rows:
-            tags = db.get_tags_for_image(conn, row["id"])
-            writer.writerow(
-                _csv_safe(cell)
-                for cell in [
-                    Path(row["path"]).name,
-                    row["path"],
-                    row["width"],
-                    row["height"],
-                    row["format"],
-                    row["file_size"],
-                    row["exif_camera_make"],
-                    row["exif_camera_model"],
-                    row["exif_lens_model"],
-                    row["exif_datetime_original"],
-                    row["exif_gps_lat"],
-                    row["exif_gps_lon"],
-                    row["dominant_color_name"],
-                    row["dominant_color_hex"],
-                    "; ".join(tags),
-                    row["tags_status"],
-                    row["added_at"],
-                    row["exif_json"] or "",
-                ]
-            )
+        def generate():
+            # Streamed so a big catalog isn't built in memory; it gets its own connection
+            # because the request-scoped one is closed before the body is consumed.
+            conn = db.connect(db_path)
+            try:
+                buffer = io.StringIO()
+                writer = csv.writer(buffer)
+
+                def drain() -> bytes:
+                    data = buffer.getvalue().encode("utf-8")
+                    buffer.seek(0)
+                    buffer.truncate(0)
+                    return data
+
+                writer.writerow(EXPORT_COLUMNS)
+                yield b"\xef\xbb\xbf" + drain()  # UTF-8 BOM so Excel detects the encoding
+                for row in conn.execute(list_sql, params):
+                    writer.writerow(
+                        _csv_safe(cell)
+                        for cell in [
+                            Path(row["path"]).name,
+                            row["path"],
+                            row["width"],
+                            row["height"],
+                            row["format"],
+                            row["file_size"],
+                            row["exif_camera_make"],
+                            row["exif_camera_model"],
+                            row["exif_lens_model"],
+                            row["exif_datetime_original"],
+                            row["exif_gps_lat"],
+                            row["exif_gps_lon"],
+                            row["dominant_color_name"],
+                            row["dominant_color_hex"],
+                            row["tag_list"] or "",
+                            row["tags_status"],
+                            row["added_at"],
+                            row["exif_json"] or "",
+                        ]
+                    )
+                    if buffer.tell() > 64 * 1024:
+                        yield drain()
+                yield drain()
+            finally:
+                conn.close()
 
         return Response(
-            buffer.getvalue().encode("utf-8-sig"),
+            generate(),
             mimetype="text/csv",
             headers={"Content-Disposition": "attachment; filename=photocatalog-export.csv"},
         )

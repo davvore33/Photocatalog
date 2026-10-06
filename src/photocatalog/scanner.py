@@ -100,16 +100,24 @@ def _extract_static_fields(path: Path, file_hash: str) -> dict | None:
         return _extract_static_fields_raw(path, file_hash)
 
     try:
-        with Image.open(path) as img:
-            width, height = img.size
-            fmt = img.format
+        img = Image.open(path)
     except (UnidentifiedImageError, OSError):
         return None
 
-    exif = exif_extract.extract_exif(path)
+    with img:
+        width, height = img.size  # true size: read before draft() shrinks it
+        fmt = img.format
+        exif = exif_extract.extract_exif(path)
+        # One decode feeds both the color analysis and the thumbnail. For JPEG, draft()
+        # lets the decoder produce a 1/2, 1/4 or 1/8 size image directly (never smaller
+        # than the thumbnail), several times cheaper than a full-resolution decode; it is
+        # a no-op for other formats.
+        img.draft("RGB", config.THUMBNAIL_SIZE)
+        img.load()
+        color = color_extract.dominant_color_from_image(img)
+        thumbnails.generate_thumbnail_from_image(img, file_hash)
+
     promoted = exif_extract.promote_fields(exif)
-    color = color_extract.extract_dominant_color(path)
-    thumbnails.generate_thumbnail(path, file_hash)
 
     fields = {
         "width": width,

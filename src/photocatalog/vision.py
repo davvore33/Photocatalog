@@ -15,7 +15,10 @@ PROMPT = (
     '{"tags": [...]}, with 5-15 short lowercase tags describing the '
     "subjects, objects, setting, and activity in the image. "
     "Do NOT include colors, mood, or emotional descriptions - "
-    "those are handled separately."
+    "those are handled separately. "
+    # Thinking-capable models (e.g. qwen3-vl) otherwise spend 400-2000 tokens
+    # reasoning before the JSON, which is where nearly all the time goes.
+    "Answer immediately with the JSON only; do not reason step by step."
 )
 
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)

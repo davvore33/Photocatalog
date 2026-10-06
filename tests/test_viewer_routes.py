@@ -256,3 +256,44 @@ def test_export_csv_defuses_formula_injection(tmp_path: Path):
     rows = _read_csv_rows(client.get("/export.csv"))
     assert rows[0]["tags"].startswith("'=HYPERLINK")
     assert rows[0]["path"] == "/photos/0.jpg"
+
+
+# --- optimization regression tests -----------------------------------------
+
+
+def test_export_csv_orders_and_joins_tags_and_handles_untagged(tmp_path: Path):
+    client, _ = _make_client(
+        tmp_path,
+        [
+            {"tags": ["zebra", "apple", "mango"], "exif_datetime_original": "2024:02:01 10:00:00"},
+            {"tags": [], "exif_datetime_original": "2024:01:01 10:00:00"},
+        ],
+    )
+    rows = _read_csv_rows(client.get("/export.csv"))
+    assert [r["tags"] for r in rows] == ["apple; mango; zebra", ""]  # newest first, tags sorted
+
+
+def test_export_csv_streams_every_row_across_chunk_boundaries(tmp_path: Path):
+    big_exif = '{"MakerNote": "' + "x" * 5000 + '"}'  # ~5KB per row => several 64KB chunks
+    client, ids = _make_client(
+        tmp_path, [{"exif_json": big_exif, "tags": ["t"]} for _ in range(60)]
+    )
+    resp = client.get("/export.csv")
+    assert resp.get_data().startswith(b"\xef\xbb\xbf")  # BOM exactly once, at the start
+    rows = _read_csv_rows(resp)
+    assert len(rows) == 60
+    assert all(row["exif_json"] == big_exif and row["tags"] == "t" for row in rows)
+
+
+def test_grid_ordering_uses_the_composite_index(tmp_path: Path):
+    db_path = tmp_path / "catalog.db"
+    conn = db.connect(db_path)
+    plan = " ".join(
+        str(tuple(row))
+        for row in conn.execute(
+            "EXPLAIN QUERY PLAN SELECT id FROM images WHERE 1=1 "
+            "ORDER BY exif_datetime_original DESC, added_at DESC LIMIT 60 OFFSET 0"
+        )
+    )
+    assert "idx_images_sort" in plan
+    assert "TEMP B-TREE" not in plan

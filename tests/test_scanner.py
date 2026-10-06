@@ -324,3 +324,35 @@ def test_stage_b_aborts_without_marking_errors_when_vision_unavailable(tmp_path:
         "SELECT COUNT(*) FROM images WHERE tags_status = 'pending'"
     ).fetchone()[0] == 3
     assert conn.execute("SELECT COUNT(*) FROM tagging_events").fetchone()[0] == 0
+
+
+def test_extraction_records_true_size_even_though_jpeg_is_decoded_downscaled(tmp_path: Path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    path = folder / "big.jpg"
+    Image.new("RGB", (2400, 1600), (200, 20, 20)).save(path, "JPEG")
+    conn = db.connect(tmp_path / "catalog.db")
+
+    _scan_a(conn, folder)
+
+    row = db.get_image_by_path(conn, str(path.resolve()))
+    assert (row["width"], row["height"]) == (2400, 1600)
+    assert row["dominant_color_name"] is not None and "red" in row["dominant_color_name"]
+    with Image.open(thumbnails.thumbnail_path(row["file_hash"])) as thumb:
+        assert max(thumb.size) == 320  # still a full-size thumbnail, not a 1/8-scale one blown up
+
+
+def test_thumbnail_respects_exif_orientation_after_draft_decode(tmp_path: Path):
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    path = folder / "rotated.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6  # needs a 90° rotation: landscape pixels, portrait when displayed
+    Image.new("RGB", (1600, 1000), (20, 20, 200)).save(path, "JPEG", exif=exif)
+    conn = db.connect(tmp_path / "catalog.db")
+
+    _scan_a(conn, folder)
+
+    row = db.get_image_by_path(conn, str(path.resolve()))
+    with Image.open(thumbnails.thumbnail_path(row["file_hash"])) as thumb:
+        assert thumb.height > thumb.width

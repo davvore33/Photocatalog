@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS image_tags (
 
 CREATE INDEX IF NOT EXISTS idx_images_hash     ON images(file_hash);
 CREATE INDEX IF NOT EXISTS idx_images_datetime ON images(exif_datetime_original);
+CREATE INDEX IF NOT EXISTS idx_images_sort     ON images(exif_datetime_original DESC, added_at DESC);
 CREATE INDEX IF NOT EXISTS idx_images_camera   ON images(exif_camera_model);
 CREATE INDEX IF NOT EXISTS idx_images_color    ON images(dominant_color_name);
 CREATE INDEX IF NOT EXISTS idx_images_status   ON images(tags_status);
@@ -170,9 +171,10 @@ def all_paths(conn: sqlite3.Connection) -> list[str]:
 
 
 def images_by_status(conn: sqlite3.Connection, statuses: list[str]) -> list[sqlite3.Row]:
+    """Rows (id, path only: the wide EXIF/response columns are slow to load for thousands of rows)."""
     placeholders = ", ".join("?" for _ in statuses)
     return conn.execute(
-        f"SELECT * FROM images WHERE tags_status IN ({placeholders})", statuses
+        f"SELECT id, path FROM images WHERE tags_status IN ({placeholders})", statuses
     ).fetchall()
 
 
