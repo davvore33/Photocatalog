@@ -118,3 +118,48 @@ def test_start_scan_reports_error(tmp_path: Path):
 
     assert status["status"] == "error"
     assert "boom" in status["error"]
+
+
+def test_start_scan_only_tags_the_scanned_folder(tmp_path: Path):
+    scanned, other = tmp_path / "scanned", tmp_path / "other"
+    for folder, color in ((scanned, (10, 20, 30)), (other, (90, 80, 70))):
+        folder.mkdir()
+        Image.new("RGB", (20, 20), color).save(folder / "a.jpg", "JPEG")
+    db_path = tmp_path / "catalog.db"
+
+    # a pending row left over from an earlier scan of a different folder
+    from photocatalog import scanner
+
+    with db.open_db(db_path) as conn:
+        scanner.scan_stage_a(conn, other, scanner.ScanSummary())
+
+    with patch("photocatalog.vision.generate_tags", return_value=(["test"], "{}")):
+        assert jobs.start_scan(db_path, scanned, "fake-model") is True
+        status = _wait_until_idle_or_done()
+
+    assert status["status"] == "done"
+    assert status["counts"]["tagged"] == 1
+    with db.open_db(db_path) as conn:
+        by_path = dict(conn.execute("SELECT path, tags_status FROM images").fetchall())
+    assert by_path[str((scanned / "a.jpg").resolve())] == "done"
+    assert by_path[str((other / "a.jpg").resolve())] == "pending"
+
+
+def test_start_scan_reports_unavailable_vision_backend(tmp_path: Path):
+    from photocatalog import vision
+
+    folder = tmp_path / "photos"
+    folder.mkdir()
+    Image.new("RGB", (20, 20), (10, 20, 30)).save(folder / "a.jpg", "JPEG")
+    db_path = tmp_path / "catalog.db"
+
+    with patch(
+        "photocatalog.vision.generate_tags", side_effect=vision.VisionUnavailable("ollama down")
+    ):
+        assert jobs.start_scan(db_path, folder, "fake-model") is True
+        status = _wait_until_idle_or_done()
+
+    assert status["status"] == "error"
+    assert "ollama down" in status["error"]
+    with db.open_db(db_path) as conn:
+        assert db.stats(conn)["by_status"] == {"pending": 1}

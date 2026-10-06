@@ -10,7 +10,7 @@ LOG_BACKUP_COUNT = 3
 
 OLLAMA_URL = "http://localhost:11434/api/chat"
 DEFAULT_VISION_MODEL = "qwen3-vl:8b"
-VISION_TIMEOUT_SECONDS = 120
+VISION_TIMEOUT_SECONDS = 600
 VISION_MAX_RETRIES = 2
 
 # Longest side of the JPEG sent to the vision model, and its quality.

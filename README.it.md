@@ -37,11 +37,11 @@ photocatalog stats                        # statistiche sul catalogo
 photocatalog prune                        # rimuove le voci di file non più esistenti
 ```
 
-Il catalogo (`~/.photocatalog/catalog.db`) e le thumbnail (`~/.photocatalog/thumbnails/`) vivono fuori dal repository. Lo scan è incrementale e ripartibile: ri-lanciare `scan` sulla stessa cartella salta i file invariati e riprende il tagging da dove interrotto.
+Il catalogo (`~/.photocatalog/catalog.db`) e le thumbnail (`~/.photocatalog/thumbnails/`) vivono fuori dal repository. Lo scan è incrementale e ripartibile: ri-lanciare `scan` sulla stessa cartella salta i file invariati e riprende il tagging da dove interrotto. I file spostati o rinominati mantengono i tag, le copie identiche di un file vengono catalogate a parte (riusando i tag dell'originale senza ritaggarle) e un'immagine corrotta viene saltata con un avviso invece di interrompere lo scan. Se Ollama non è raggiungibile o il modello non è stato scaricato, il tagging si ferma subito e le immagini restano in attesa (*non* vengono segnate come errore). `scan --prune` rimuove solo le voci sotto la cartella scansionata; usa `photocatalog prune` per controllare tutto il catalogo.
 
 ### Scansionare dal browser
 
-Il viewer ha una pagina **"+ Scansiona"** (`/scan`) con un browser di cartelle (scorciatoie per Home/Scrivania/Immagini/Documenti/`/Volumes`, più un campo per il percorso) per scegliere una cartella e avviare uno scan senza toccare il terminale. Lo scan gira in un thread in background sul server e la pagina mostra il progresso live (file visti, taggati, errori) via polling finché non finisce — non serve tenere la scheda aperta, `photocatalog stats` o un refresh di `/scan` mostrano lo stesso stato. Solo uno scan alla volta, e mentre è in corso compare un pulsante **"Ferma lo scan in corso"** per interromperlo (si ferma al prossimo file, quindi può richiedere fino a ~30s se sta taggando). Avviare uno scan su un percorso molto superficiale (come `/` o `/Users`) chiede prima conferma, perché potrebbe significare scansionare l'intero disco.
+Il viewer ha una pagina **"+ Scansiona"** (`/scan`) con un browser di cartelle (scorciatoie per Home/Scrivania/Immagini/Documenti/`/Volumes`, più un campo per il percorso) per scegliere una cartella e avviare uno scan senza toccare il terminale. Lo scan gira in un thread in background sul server e la pagina mostra il progresso live (file visti, taggati, errori) via polling finché non finisce — non serve tenere la scheda aperta, `photocatalog stats` o un refresh di `/scan` mostrano lo stesso stato. Solo uno scan alla volta, e mentre è in corso compare un pulsante **"Ferma lo scan in corso"** per interromperlo (si ferma al prossimo file, quindi può richiedere un po' se sta taggando — fino al timeout della richiesta al modello). Avviare uno scan su un percorso molto superficiale (come `/` o `/Users`) chiede prima conferma, perché potrebbe significare scansionare l'intero disco.
 
 ### App di avvio per macOS
 
@@ -87,7 +87,7 @@ pytest
 
 - Per i file RAW viene usata solo l'anteprima incorporata, non i dati reali del sensore — tag, colore dominante e thumbnail riflettono il JPEG generato dalla fotocamera, non uno sviluppo RAW completo.
 - Altri formati RAW oltre ARW/CR2/CR3/NEF/RAF potrebbero funzionare se supportati da LibRaw, ma non sono testati.
-- Foto HEIC richiedono l'extra `pillow-heif`.
+- Le foto HEIC/HEIF richiedono l'extra `pillow-heif`; i file `.heic`/`.heif` vengono letti automaticamente una volta installato.
 - Il tagging via Ollama è sequenziale (nessuna concorrenza sulla singola istanza del modello locale) — questo significa anche che uno scan da CLI e uno avviato dal browser, se eseguiti insieme, si mettono in coda a vicenda lato Ollama, semplicemente rallentando.
 
 ## Sviluppi futuri

@@ -25,6 +25,10 @@ class VisionError(Exception):
     pass
 
 
+class VisionUnavailable(VisionError):
+    """Ollama is unreachable or can't serve the model: every other image would fail the same way."""
+
+
 def _load_source_image(path: Path) -> Image.Image:
     if path.suffix.lower() in raw_extract.RAW_EXTENSIONS:
         img, _, _ = raw_extract.extract_preview(path)
@@ -53,6 +57,9 @@ def _parse_tags(content: str) -> list[str]:
         if not match:
             raise VisionError(f"could not parse JSON from response: {content!r}")
         data = json.loads(match.group(0))
+
+    if not isinstance(data, dict):
+        raise VisionError(f"expected a JSON object with a 'tags' list, got: {content!r}")
 
     tags = data.get("tags", [])
     if not isinstance(tags, list):
@@ -92,13 +99,24 @@ def generate_tags(
             resp = requests.post(
                 ollama_url, json=payload, timeout=config.VISION_TIMEOUT_SECONDS
             )
+            if resp.status_code == 404:
+                raise VisionUnavailable(
+                    f"Ollama answered 404: is the model {model!r} pulled? "
+                    f"(try: ollama pull {model})"
+                )
             resp.raise_for_status()
             content = resp.json()["message"]["content"]
             tags = _parse_tags(content)
             return tags, content
+        except VisionUnavailable:
+            raise
         except (requests.RequestException, VisionError, KeyError, ValueError) as exc:
             last_error = exc
             if attempt < config.VISION_MAX_RETRIES:
                 time.sleep(2**attempt)
 
+    if isinstance(last_error, requests.ConnectionError):
+        raise VisionUnavailable(
+            f"cannot reach Ollama at {ollama_url} (is it running?): {last_error}"
+        ) from last_error
     raise VisionError(str(last_error)) from last_error

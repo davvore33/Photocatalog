@@ -43,6 +43,30 @@ def iter_image_files(folder: Path, skip_raw: bool = False):
             yield path
 
 
+def _is_under(path_str: str, folder: Path) -> bool:
+    """True if path_str is `folder` itself or lives anywhere beneath it. `folder` must be resolved."""
+    return Path(path_str).is_relative_to(folder)
+
+
+def _drop_thumbnail_if_unused(conn: sqlite3.Connection, file_hash: str) -> None:
+    """Thumbnails are named by content hash and shared by identical copies; delete only the last one."""
+    if not db.get_images_by_hash(conn, file_hash):
+        thumbnails.thumbnail_path(file_hash).unlink(missing_ok=True)
+
+
+def _insert_duplicate(
+    conn: sqlite3.Connection, original: sqlite3.Row, path_str: str, size: int, mtime: float
+) -> None:
+    """Catalog another copy of an already-known file, reusing its extracted data and tags."""
+    now = _now()
+    fields = {key: original[key] for key in original.keys() if key != "id"}
+    fields.update(
+        path=path_str, file_size=size, mtime=mtime, added_at=now, updated_at=now
+    )
+    new_id = db.insert_image(conn, fields)
+    db.set_tags(conn, new_id, db.get_tags_for_image(conn, original["id"]))
+
+
 def _extract_static_fields_raw(path: Path, file_hash: str) -> dict | None:
     """Same as _extract_static_fields, for RAW files: everything is derived from
     the embedded JPEG preview rather than full demosaicing of the sensor data."""
@@ -140,13 +164,39 @@ def scan_stage_a(
             summary.unchanged += 1
             continue
 
-        by_hash = db.get_image_by_hash(conn, file_hash)
-        if by_hash is not None and by_hash["path"] != path_str:
-            db.update_image_path(conn, by_hash["id"], path_str, _now())
-            summary.moved += 1
-            continue
+        # A path we've never seen holding content we already know is either a move
+        # (the old path is gone) or an extra copy (the old path is still there).
+        # A path that already has a row is a content change and is handled below;
+        # re-pointing another row at it would violate the UNIQUE path constraint.
+        if existing is None:
+            siblings = db.get_images_by_hash(conn, file_hash)
+            if siblings:
+                moved_from = next(
+                    (r for r in siblings if not Path(r["path"]).exists()), None
+                )
+                if moved_from is not None:
+                    db.update_image(
+                        conn,
+                        moved_from["id"],
+                        {
+                            "path": path_str,
+                            "file_size": size,
+                            "mtime": mtime,
+                            "updated_at": _now(),
+                        },
+                    )
+                    summary.moved += 1
+                else:
+                    _insert_duplicate(conn, siblings[0], path_str, size, mtime)
+                    summary.added += 1
+                continue
 
-        static_fields = _extract_static_fields(path, file_hash)
+        try:
+            static_fields = _extract_static_fields(path, file_hash)
+        except Exception as exc:  # noqa: BLE001 - one corrupt file must not abort the whole scan
+            logger.warning("skipped %s: extraction failed (%s: %s)", path_str, type(exc).__name__, exc)
+            summary.skipped.append(path_str)
+            continue
         if static_fields is None:
             logger.warning("skipped %s: unreadable/unsupported image data", path_str)
             summary.skipped.append(path_str)
@@ -165,6 +215,7 @@ def scan_stage_a(
                 "error_message": None,
             }
             db.update_image(conn, existing["id"], fields)
+            _drop_thumbnail_if_unused(conn, existing["file_hash"])
             summary.updated += 1
         else:
             fields = {
@@ -201,13 +252,31 @@ def scan_stage_b(
     model: str = config.DEFAULT_VISION_MODEL,
     retry_errors: bool = False,
     cancel_event: threading.Event | None = None,
+    folder: Path | None = None,
 ) -> bool:
     """Tag every pending (and optionally errored) image via the Ollama vision model.
 
+    If `folder` is given, rows whose `path` is not under `folder` are skipped
+    without being marked done or error. This keeps a folder-scoped run from
+    accidentally tagging stale DB rows that live elsewhere on disk.
+
     Returns False if cancel_event was set before tagging finished, True otherwise.
+    Raises vision.VisionUnavailable if Ollama can't be reached or doesn't have the model.
     """
     statuses = ["pending"] + (["error"] if retry_errors else [])
     rows = db.images_by_status(conn, statuses)
+
+    if folder is not None:
+        root = folder.resolve()
+        before = len(rows)
+        rows = [r for r in rows if _is_under(r["path"], root)]
+        logger.info(
+            "scan stage B: folder filter %s kept %d/%d rows",
+            folder,
+            len(rows),
+            before,
+        )
+
     logger.info("scan stage B starting: model=%s images_to_tag=%d", model, len(rows))
     t0 = time.monotonic()
 
@@ -216,11 +285,18 @@ def scan_stage_b(
             return False
         path = Path(row["path"])
         if not path.exists():
+            logger.warning("skipping %s: file no longer exists", path)
+            summary.skipped.append(str(path))
             continue
 
         tag_start = time.monotonic()
         try:
             tags, raw = vision.generate_tags(path, model=model)
+        except vision.VisionUnavailable as exc:
+            # Not this image's fault: leave it pending rather than marking the whole
+            # catalog as errored, and stop instead of failing every remaining image.
+            logger.error("tagging aborted, vision backend unavailable (model=%s): %s", model, exc)
+            raise
         except (OSError, vision.VisionError) as exc:
             elapsed = time.monotonic() - tag_start
             db.record_tagging_event(conn, model, elapsed, False, _now())
@@ -258,20 +334,29 @@ def scan_stage_b(
         summary.tag_seconds += elapsed
 
     logger.info(
-        "scan stage B finished in %.1fs: model=%s tagged=%d errors=%d",
+         "scan stage B finished in %.1fs: model=%s tagged=%d errors=%d skipped=%d",
         time.monotonic() - t0,
         model,
         summary.tagged,
         summary.tag_errors,
-    )
+        len(summary.skipped),
+     )
     return True
 
 
-def prune(conn: sqlite3.Connection) -> list[str]:
-    """Remove catalog entries whose source file no longer exists. Returns removed paths."""
+def prune(conn: sqlite3.Connection, folder: Path | None = None) -> list[str]:
+    """Remove catalog entries whose source file no longer exists. Returns removed paths.
+
+    If `folder` is given, only entries under it are considered, so pruning after a
+    folder-scoped scan can't wipe photos that live on an unmounted volume.
+    """
+    root = folder.resolve() if folder is not None else None
     removed = []
-    for row in conn.execute("SELECT id, path FROM images"):
+    for row in conn.execute("SELECT id, path, file_hash FROM images").fetchall():
+        if root is not None and not _is_under(row["path"], root):
+            continue
         if not Path(row["path"]).exists():
             db.delete_image(conn, row["id"])
+            _drop_thumbnail_if_unused(conn, row["file_hash"])
             removed.append(row["path"])
     return removed

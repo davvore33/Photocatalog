@@ -33,6 +33,7 @@ TRANSLATIONS = {
 
         "scan.heading": "Scansiona una cartella",
         "scan.error_notfound": "Il percorso indicato non è una cartella valida.",
+        "scan.error_busy": "C'è già uno scan in corso: attendi che finisca o fermalo.",
         "scan.shortcut_home": "Home",
         "scan.shortcut_desktop": "Scrivania",
         "scan.shortcut_pictures": "Immagini",
@@ -51,7 +52,7 @@ TRANSLATIONS = {
         "scan.go_to_catalog": "Vai al catalogo »",
         "scan.phase_scanning": "Scansione file...",
         "scan.phase_tagging_prefix": "Tagging con",
-        "scan.phase_stopping": "Fermando... (può richiedere fino a ~30s se sta taggando un'immagine)",
+        "scan.phase_stopping": "Fermando... (può richiedere un po' se sta taggando un'immagine)",
         "scan.phase_done": "Completato",
         "scan.phase_cancelled": "Fermato dall'utente",
         "scan.phase_error": "Errore",
@@ -101,6 +102,7 @@ TRANSLATIONS = {
 
         "scan.heading": "Scan a folder",
         "scan.error_notfound": "The given path is not a valid folder.",
+        "scan.error_busy": "A scan is already running: wait for it to finish or stop it.",
         "scan.shortcut_home": "Home",
         "scan.shortcut_desktop": "Desktop",
         "scan.shortcut_pictures": "Pictures",
@@ -119,7 +121,7 @@ TRANSLATIONS = {
         "scan.go_to_catalog": "Go to catalog »",
         "scan.phase_scanning": "Scanning files...",
         "scan.phase_tagging_prefix": "Tagging with",
-        "scan.phase_stopping": "Stopping... (can take up to ~30s if tagging an image)",
+        "scan.phase_stopping": "Stopping... (can take a while if an image is being tagged)",
         "scan.phase_done": "Done",
         "scan.phase_cancelled": "Stopped by user",
         "scan.phase_error": "Error",

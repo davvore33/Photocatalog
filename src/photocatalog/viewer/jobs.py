@@ -79,9 +79,11 @@ def start_scan(db_path: Path, folder: Path, model: str) -> bool:
                 completed = scanner.scan_stage_a(conn, folder, summary, cancel_event=_cancel_event)
                 if completed:
                     with _lock:
-                        _state["phase"] = "tagging"
+                        # don't clobber "stopping" if a stop arrived right after stage A
+                        if not _cancel_event.is_set():
+                            _state["phase"] = "tagging"
                     completed = scanner.scan_stage_b(
-                        conn, summary, model=model, cancel_event=_cancel_event
+                        conn, summary, model=model, cancel_event=_cancel_event, folder=folder
                     )
 
             with _lock:
@@ -122,8 +124,8 @@ def request_stop() -> bool:
         if _state["status"] != "running":
             return False
         _state["phase"] = "stopping"
+        _cancel_event.set()
     logger.info("scan stop requested")
-    _cancel_event.set()
     return True
 
 

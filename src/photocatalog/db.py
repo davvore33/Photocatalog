@@ -92,6 +92,13 @@ def get_image_by_hash(conn: sqlite3.Connection, file_hash: str) -> sqlite3.Row |
     ).fetchone()
 
 
+def get_images_by_hash(conn: sqlite3.Connection, file_hash: str) -> list[sqlite3.Row]:
+    """Every row with this content hash: identical copies of a file share one hash."""
+    return conn.execute(
+        "SELECT * FROM images WHERE file_hash = ? ORDER BY id", (file_hash,)
+    ).fetchall()
+
+
 def get_image(conn: sqlite3.Connection, image_id: int) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
 

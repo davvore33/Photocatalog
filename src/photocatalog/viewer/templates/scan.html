@@ -6,6 +6,8 @@
 
 {% if error == 'notfound' %}
   <p class="error">{{ t('scan.error_notfound') }}</p>
+{% elif error == 'busy' %}
+  <p class="error">{{ t('scan.error_busy') }}</p>
 {% endif %}
 
 <div class="shortcuts">

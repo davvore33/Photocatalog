@@ -4,7 +4,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import config, db, logging_setup, scanner
+from . import config, db, logging_setup, scanner, vision
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +35,19 @@ def cmd_scan(args: argparse.Namespace) -> int:
 
         if not args.no_tag:
             print(f"Tagging with {args.model} ...")
-            scanner.scan_stage_b(
-                conn, summary, model=args.model, retry_errors=args.retry_errors
-            )
+            try:
+                scanner.scan_stage_b(
+                    conn, summary, model=args.model, retry_errors=args.retry_errors,
+                    folder=folder,
+                )
+            except vision.VisionUnavailable as exc:
+                print(f"error: tagging aborted: {exc}", file=sys.stderr)
+                print(
+                    f"  {summary.tagged} tagged before stopping; "
+                    "remaining images stay pending and resume on the next scan.",
+                    file=sys.stderr,
+                )
+                return 1
             avg = summary.tag_seconds / summary.tagged if summary.tagged else 0
             print(
                 f"  {summary.tagged} tagged, {summary.tag_errors} errors "
@@ -45,8 +55,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
             )
 
         if args.prune:
-            removed = scanner.prune(conn)
-            print(f"Pruned {len(removed)} missing files")
+            removed = scanner.prune(conn, folder=folder)
+            print(f"Pruned {len(removed)} missing files under {folder}")
 
     elapsed = time.monotonic() - t0
     print(f"Done in {elapsed:.1f}s.")
@@ -131,7 +141,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--retry-errors", action="store_true", help="Also retry previously failed images"
     )
     scan_p.add_argument(
-        "--prune", action="store_true", help="Remove missing files after scanning"
+        "--prune",
+        action="store_true",
+        help="Remove catalog entries under the scanned folder whose files are gone",
     )
     scan_p.set_defaults(func=cmd_scan)
 

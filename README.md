@@ -37,11 +37,11 @@ photocatalog stats                         # catalog statistics
 photocatalog prune                         # remove entries for files that no longer exist
 ```
 
-The catalog (`~/.photocatalog/catalog.db`) and thumbnails (`~/.photocatalog/thumbnails/`) live outside the repository. Scanning is incremental and resumable: re-running `scan` on the same folder skips unchanged files and resumes tagging where it left off.
+The catalog (`~/.photocatalog/catalog.db`) and thumbnails (`~/.photocatalog/thumbnails/`) live outside the repository. Scanning is incremental and resumable: re-running `scan` on the same folder skips unchanged files and resumes tagging where it left off. Moved or renamed files keep their tags, identical copies of a file are cataloged separately (reusing the original's tags instead of re-tagging), and a corrupt image is skipped with a warning instead of aborting the scan. If Ollama is unreachable or the model isn't pulled, tagging stops right away and the remaining images stay pending (they are *not* marked as errors). `scan --prune` only removes entries under the scanned folder; use `photocatalog prune` to check the whole catalog.
 
 ### Scanning from the browser
 
-The viewer has a **"+ Scansiona"** page (`/scan`) with a folder browser (shortcuts for Home/Desktop/Pictures/Documents/`/Volumes`, plus a path field) to pick a folder and start a scan without touching the terminal. The scan runs in a background thread on the server and the page polls live progress (files seen, tagged, errors) until it's done — no need to keep the tab open, `photocatalog stats` or a refresh of `/scan` will show the same status. Only one scan runs at a time, and a **"Ferma lo scan in corso"** button appears while it's running to cancel it (it stops at the next file boundary, so it can take up to ~30s if it's mid-tag). Starting a scan on a very shallow path (like `/` or `/Users`) asks for confirmation first, since that could mean walking the entire disk.
+The viewer has a **"+ Scansiona"** page (`/scan`) with a folder browser (shortcuts for Home/Desktop/Pictures/Documents/`/Volumes`, plus a path field) to pick a folder and start a scan without touching the terminal. The scan runs in a background thread on the server and the page polls live progress (files seen, tagged, errors) until it's done — no need to keep the tab open, `photocatalog stats` or a refresh of `/scan` will show the same status. Only one scan runs at a time, and a **"Ferma lo scan in corso"** button appears while it's running to cancel it (it stops at the next file boundary, so it can take a while if it's mid-tag — up to the vision request timeout). Starting a scan on a very shallow path (like `/` or `/Users`) asks for confirmation first, since that could mean walking the entire disk.
 
 ### macOS launcher app
 
@@ -87,7 +87,7 @@ pytest
 
 - Only the embedded preview is used for RAW files, not the actual sensor data — tags, dominant color, and the thumbnail reflect the camera-generated JPEG preview, not a full RAW development.
 - Other RAW formats beyond ARW/CR2/CR3/NEF/RAF may still work if LibRaw supports them, but are untested.
-- HEIC photos require the `pillow-heif` extra.
+- HEIC/HEIF photos require the `pillow-heif` extra; `.heic`/`.heif` files are picked up automatically once it's installed.
 - Ollama tagging runs sequentially (no concurrency against a single local model instance) — this also means a CLI `scan` and a browser-triggered scan running at the same time will queue behind each other on the Ollama side, just more slowly.
 
 ## Future plans

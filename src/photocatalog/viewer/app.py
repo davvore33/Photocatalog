@@ -3,6 +3,7 @@ import io
 import json
 import sqlite3
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import Flask, Response, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
@@ -31,9 +32,34 @@ EXPORT_COLUMNS = [
 ]
 
 
+def _date_clause(value: str, op: str) -> tuple[str, str]:
+    """Compare a user-typed date (YYYY-MM-DD, or a shorter prefix like YYYY-MM) with the
+    EXIF timestamp, which is stored as 'YYYY:MM:DD HH:MM:SS'. Both sides are cut to the
+    same length, so the bound is inclusive of the whole day/month/year."""
+    prefix = value.replace("-", ":")
+    return (
+        f"REPLACE(SUBSTR(images.exif_datetime_original, 1, {len(prefix)}), '-', ':') {op} ?",
+        prefix,
+    )
+
+
+def _csv_safe(value):
+    """Defuse spreadsheet formula injection: tags and EXIF text come from files/models we don't control."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
+def _safe_next(target: str | None) -> str:
+    """Only allow same-site relative redirects (no scheme/host, no '//evil.com' or '/\\evil.com')."""
+    if target and target.startswith("/") and not target.startswith("//") and "\\" not in target:
+        return target
+    return url_for("index")
+
+
 def _parse_filters(args) -> tuple[str, list, dict]:
     """Build a SQL WHERE clause + params from query args, shared by the grid and CSV export."""
-    tags_selected = [t for t in args.getlist("tags") if t]
+    tags_selected = list(dict.fromkeys(t for t in args.getlist("tags") if t))
     tag_mode = args.get("tag_mode", "and")
     if tag_mode not in ("and", "or"):
         tag_mode = "and"
@@ -74,16 +100,19 @@ def _parse_filters(args) -> tuple[str, list, dict]:
     if search:
         clauses.append(
             "images.id IN (SELECT it3.image_id FROM image_tags it3 "
-            "JOIN tags t3 ON t3.id = it3.tag_id WHERE t3.name LIKE ?)"
+            "JOIN tags t3 ON t3.id = it3.tag_id WHERE t3.name LIKE ? ESCAPE '\\')"
         )
-        params.append(f"%{search}%")
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        params.append(f"%{escaped}%")
 
     if date_from:
-        clauses.append("images.exif_datetime_original >= ?")
-        params.append(date_from)
+        clause, value = _date_clause(date_from, ">=")
+        clauses.append(clause)
+        params.append(value)
     if date_to:
-        clauses.append("images.exif_datetime_original <= ?")
-        params.append(date_to)
+        clause, value = _date_clause(date_to, "<=")
+        clauses.append(clause)
+        params.append(value)
 
     filters = {
         "tags": tags_selected,
@@ -146,9 +175,18 @@ def create_app(db_path: Path) -> Flask:
         lang = current_lang()
         return {"t": lambda key, **kw: i18n.translate(lang, key, **kw), "current_lang": lang}
 
+    @app.before_request
+    def reject_cross_origin_posts():
+        # Browsers attach Origin to cross-site POSTs; without this, any web page the
+        # user visits could start/stop scans on this local server.
+        if request.method == "POST":
+            origin = request.headers.get("Origin")
+            if origin and urlparse(origin).netloc != request.host:
+                abort(403)
+
     @app.route("/lang/<code>")
     def set_lang(code: str):
-        resp = redirect(request.args.get("next") or url_for("index"))
+        resp = redirect(_safe_next(request.args.get("next")))
         if code in i18n.TRANSLATIONS:
             resp.set_cookie("lang", code, max_age=60 * 60 * 24 * 365)
         return resp
@@ -219,7 +257,8 @@ def create_app(db_path: Path) -> Flask:
         for row in rows:
             tags = db.get_tags_for_image(conn, row["id"])
             writer.writerow(
-                [
+                _csv_safe(cell)
+                for cell in [
                     Path(row["path"]).name,
                     row["path"],
                     row["width"],
@@ -310,7 +349,7 @@ def create_app(db_path: Path) -> Flask:
 
         started = jobs.start_scan(app.config["DB_PATH"], folder, model)
         if not started:
-            return redirect(url_for("scan_page", path=folder_str))
+            return redirect(url_for("scan_page", path=folder_str, error="busy"))
 
         return redirect(url_for("scan_page", path=folder_str))
 
