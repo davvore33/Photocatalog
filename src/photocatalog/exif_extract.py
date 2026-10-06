@@ -1,5 +1,6 @@
 import base64
 import io
+import re
 from pathlib import Path
 
 import piexif
@@ -11,6 +12,13 @@ _PIEXIF_EXTENSIONS = {".jpg", ".jpeg", ".tif", ".tiff"}
 
 # Structural IFD-offset pointers, not actual metadata - always present, never useful to show.
 _POINTER_TAGS = {"ExifTag", "GPSTag", "InteroperabilityTag"}
+
+# Opaque vendor blobs: undocumented binary, useless once base64-encoded, and huge
+# (Sony/Fuji MakerNotes were ~84% of a real 625 MB catalog).
+_DROPPED_TAGS = {"MakerNote"}
+
+# XMP reserves a block of whitespace before its trailer so editors can grow it in place.
+_XMP_PADDING_RE = re.compile(r"\s+(<\?xpacket end)")
 
 
 def _rational_to_value(value):
@@ -116,6 +124,29 @@ def _extract_via_pillow(source: Path | io.BytesIO) -> dict:
     return result
 
 
+def _xmp_text(value):
+    """XMP arrives as raw bytes (a list of ints via piexif); store it as readable XML, unpadded."""
+    if isinstance(value, list) and all(isinstance(b, int) and 0 <= b < 256 for b in value):
+        value = bytes(value).decode("utf-8", "replace")
+    if isinstance(value, str):
+        value = _XMP_PADDING_RE.sub(r"\n\1", value.strip("\x00").strip())
+    return value
+
+
+def slim_exif(exif: dict) -> dict:
+    """Drop opaque blobs and normalize XMP. Applied at extraction and by `photocatalog compact`."""
+    result = {}
+    for ifd_name, fields in exif.items():
+        section = {
+            key: _xmp_text(value) if key == "XMLPacket" else value
+            for key, value in fields.items()
+            if key not in _DROPPED_TAGS
+        }
+        if section:
+            result[ifd_name] = section
+    return result
+
+
 def extract_exif(path: Path, fallback_bytes: bytes | None = None) -> dict:
     """Return the full EXIF data as a JSON-safe nested dict, grouped by IFD.
 
@@ -124,6 +155,10 @@ def extract_exif(path: Path, fallback_bytes: bytes | None = None) -> dict:
     piexif directly, but the camera-written EXIF usually survives in the
     preview JPEG's own APP1 segment.
     """
+    return slim_exif(_extract_raw_exif(path, fallback_bytes))
+
+
+def _extract_raw_exif(path: Path, fallback_bytes: bytes | None) -> dict:
     ext = path.suffix.lower()
     is_raw = ext in raw_extract.RAW_EXTENSIONS
 

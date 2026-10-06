@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -239,3 +240,19 @@ def stats(conn: sqlite3.Connection) -> dict:
         "top_tags": [(row["name"], row["n"]) for row in top_tags],
         "model_stats": model_speed_stats(conn),
     }
+
+
+def slim_stored_exif(conn: sqlite3.Connection, slim) -> int:
+    """Rewrite every stored exif_json through `slim`, in one transaction. Returns rows changed."""
+    changed = 0
+    rows = conn.execute("SELECT id, exif_json FROM images WHERE exif_json IS NOT NULL")
+    updates = []
+    for row in rows:
+        original = row["exif_json"]
+        slimmed = json.dumps(slim(json.loads(original)))
+        if slimmed != original:
+            updates.append((slimmed, row["id"]))
+            changed += 1
+    with conn:
+        conn.executemany("UPDATE images SET exif_json = ? WHERE id = ?", updates)
+    return changed

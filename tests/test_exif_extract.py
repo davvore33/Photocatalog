@@ -6,6 +6,7 @@ import piexif
 from PIL import Image
 from PIL.TiffImagePlugin import IFDRational
 
+from photocatalog import exif_extract
 from photocatalog.exif_extract import _jsonify, extract_exif, promote_fields
 
 
@@ -110,3 +111,48 @@ def test_extract_exif_raw_falls_back_to_preview_bytes(tmp_path: Path):
     promoted = promote_fields(exif)
 
     assert promoted["exif_camera_make"] == "FUJIFILM"
+
+
+def test_slim_exif_drops_makernote_and_decodes_padded_xmp():
+    xmp = "<?xpacket begin=''?><x:xmpmeta><xmp:Rating>3</xmp:Rating></x:xmpmeta>" + " " * 4000 + "<?xpacket end='w'?>"
+    raw = {
+        "0th": {"Make": "SONY", "XMLPacket": list(xmp.encode())},
+        "Exif": {"MakerNote": "QUJD" * 10000, "LensModel": "FE 35mm"},
+        "1st": {"MakerNote": "x"},  # a section left empty is dropped entirely
+    }
+
+    slim = exif_extract.slim_exif(raw)
+
+    assert slim == {
+        "0th": {
+            "Make": "SONY",
+            "XMLPacket": "<?xpacket begin=''?><x:xmpmeta><xmp:Rating>3</xmp:Rating></x:xmpmeta>\n<?xpacket end='w'?>",
+        },
+        "Exif": {"LensModel": "FE 35mm"},
+    }
+
+
+def test_slim_exif_is_idempotent():
+    once = exif_extract.slim_exif({"0th": {"XMLPacket": list(b"<x/>   <?xpacket end='w'?>")}})
+    assert exif_extract.slim_exif(once) == once
+
+
+def test_compact_command_slims_existing_rows(tmp_path):
+    import json
+
+    from photocatalog import cli, db
+
+    db_path = tmp_path / "catalog.db"
+    conn = db.connect(db_path)
+    db.insert_image(conn, {
+        "path": "/p.jpg", "file_hash": "h", "file_size": 1, "mtime": 1.0,
+        "added_at": "x", "updated_at": "x",
+        "exif_json": json.dumps({"Exif": {"MakerNote": "A" * 100000, "FNumber": 2.8}}),
+    })
+    conn.close()
+
+    assert cli.main(["compact", "--db", str(db_path)]) == 0
+
+    conn = db.connect(db_path)
+    (stored,) = conn.execute("SELECT exif_json FROM images").fetchone()
+    assert json.loads(stored) == {"Exif": {"FNumber": 2.8}}

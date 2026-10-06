@@ -4,7 +4,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import config, db, logging_setup, scanner, vision
+from . import config, db, exif_extract, logging_setup, scanner, vision
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +121,21 @@ def cmd_prune(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_compact(args: argparse.Namespace) -> int:
+    db_path = Path(args.db).expanduser()
+    if not db_path.exists():
+        print(f"error: {db_path} does not exist", file=sys.stderr)
+        return 1
+    before = db_path.stat().st_size
+    with db.open_db(db_path) as conn:
+        slimmed = db.slim_stored_exif(conn, exif_extract.slim_exif)
+        print(f"Slimmed EXIF of {slimmed} images, reclaiming disk space ...")
+        conn.execute("VACUUM")
+    after = db_path.stat().st_size
+    print(f"{db_path}: {before / 1e6:.0f} MB -> {after / 1e6:.0f} MB")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="photocatalog")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -162,6 +177,13 @@ def build_parser() -> argparse.ArgumentParser:
     prune_p.add_argument("--db", default=str(config.DEFAULT_DB_PATH))
     prune_p.add_argument("--yes", action="store_true", help="Skip confirmation")
     prune_p.set_defaults(func=cmd_prune)
+
+    compact_p = subparsers.add_parser(
+        "compact",
+        help="Strip unused EXIF blobs (MakerNote) from existing entries and shrink the DB file",
+    )
+    compact_p.add_argument("--db", default=str(config.DEFAULT_DB_PATH))
+    compact_p.set_defaults(func=cmd_compact)
 
     return parser
 

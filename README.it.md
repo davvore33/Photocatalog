@@ -35,6 +35,7 @@ photocatalog scan ~/Pictures/Vacanze     # scansiona una cartella e aggiorna il 
 photocatalog serve                        # avvia il viewer su http://127.0.0.1:5000
 photocatalog stats                        # statistiche sul catalogo
 photocatalog prune                        # rimuove le voci di file non più esistenti
+photocatalog compact                      # toglie i blob EXIF inutili dalle voci vecchie e riduce il DB
 ```
 
 Il catalogo (`~/.photocatalog/catalog.db`) e le thumbnail (`~/.photocatalog/thumbnails/`) vivono fuori dal repository. Lo scan è incrementale e ripartibile: ri-lanciare `scan` sulla stessa cartella salta i file invariati e riprende il tagging da dove interrotto. I file spostati o rinominati mantengono i tag, le copie identiche di un file vengono catalogate a parte (riusando i tag dell'originale senza ritaggarle) e un'immagine corrotta viene saltata con un avviso invece di interrompere lo scan. Se Ollama non è raggiungibile o il modello non è stato scaricato, il tagging si ferma subito e le immagini restano in attesa (*non* vengono segnate come errore). `scan --prune` rimuove solo le voci sotto la cartella scansionata; usa `photocatalog prune` per controllare tutto il catalogo.
